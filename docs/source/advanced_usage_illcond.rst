@@ -93,7 +93,7 @@ having to look at most of its contents.
   bit in the LP or MIP, and care should be taken to ensure they are
   computed in the same way in the model generation process.
 
-  
+
 * **Long Sequences of Transfer Constraints.**
   Transfer constraints multiply a variable by a number and assign
   the expression into a new variable.   A long sequence of such
@@ -102,7 +102,7 @@ having to look at most of its contents.
   a basis matrix with a high condition number.   For example, consider
 
   .. _transfer-example1-label:
-  
+
   .. math::
 
      x_1 = 2x_2 \\
@@ -266,15 +266,15 @@ models.
   .. image:: _static/1603965_bitmap1.png
       :scale: 60 %
   .. image:: _static/1603965_bitmap2.png
-      :align: center	     
-      :scale: 60 %   
-	      
+      :align: center
+      :scale: 60 %
+
   The bitmap indicates that consecutive bidiagonal constraints have a variable
   in common.  This is indeed true, and a closer look reveals that adding
   these constraints results in cancellation of the common variables.
 
   .. image:: _static/1603965_agg.png
-      :align: center	     
+      :align: center
       :scale: 40 %
 
   Indeed, after adding all these constraints, only variables C7034 and C7704
@@ -294,17 +294,17 @@ models.
   :math:`y=(1, 10^{-10}, 10^{-10}, 10^{-10}, -10^{-10}, -10^{-10})`
 
   that satisfies the condition of a certificate of ill conditioning, namely
-  :math:`||B^{T}y||_{\infty} \leq \epsilon` and :math:`||y|| \gg \epsilon`.	
+  :math:`||B^{T}y||_{\infty} \leq \epsilon` and :math:`||y|| \gg \epsilon`.
   One can extend the certificate to the other 671 constraints involving
   bidiagonal constraints by setting each y value to 1 as well, i.e., for
   the full explanation the vector with 676 components
-  
+
   :math:`y=(1, 1, \cdots, 1, 10^{-10}, 10^{-10}, 10^{-10}, -10^{-10},
   -10^{-10})`
 
   satisfies the certificate of ill conditioning criterion in the
   same way, namely
-  
+
   :math:`y^{T}Bx = 10^{-10} C0030 + 10^{-10} C1701 - 5*10^{-12} C7001`
 
   has only small coefficients.
@@ -320,7 +320,7 @@ models.
   explanation consists of 241 constraints and 241 variables, while the
   column based explanation consists of 187 constraints and 187 variables.
   Both reside in the examples directory of the repository.  Given the similar
-  sizes, the discussion here will consider the row-based explanation.   
+  sizes, the discussion here will consider the row-based explanation.
 
   An interpretation of all 241 constraints in the row-based explanation,
   while possible, is not really needed.   As with the previous example,
@@ -390,16 +390,16 @@ models.
   pattern consistent with a long sequence of transfer constraints.
 
   .. image:: _static/irish_bitmap.png
-      :align: center	     
-      :scale: 60 %   
-  
+      :align: center
+      :scale: 60 %
+
   However, this is more complicated than either of the previous examples
   of sequences of transfer constraints, both of which had a simple bidiagonal
   nonzero pattern.  The row based explanation appears to involve variables
   and constraints associated with activities for a single power source and
   multiple time periods.   However, the explanation sorts the constraints
   in descending order by absolute multiplier value, and the connection
-  between consecutive time periods is not immediately clear.  
+  between consecutive time periods is not immediately clear.
 
   | (mult=1.473670931920553)MinDownInit_24: v_24_13 = 0
   | (mult=-0.301174019398261)Link_u_v_24_14: v_24_13 + u_24_13 - v_24_14 >= 0
@@ -434,7 +434,7 @@ models.
   Underlined constraints appear in the row-based explanation.
 
   .. image:: _static/irish_dualvals.png
-      :align: center	     
+      :align: center
 
   This suggests that the Link and RampUpSlow constraints for consecutive
   time periods are related, as the dual variables steadily increase as the
@@ -443,7 +443,7 @@ models.
   explanation that will facilitate interpretation.  In other words, reorder the
   constraints in the explanation as follows and start with the constraints with
   the largest time period.
-	      
+
   | (mult=-0.11503823888171555)Link_u_v_24_15: v_24_14 + u_24_14 - v_24_15 >= 0
   | (mult=0.0004308941917262418)RampUpSlow_P_24_15: - 165 u_24_14 - 165 v_24_15 + 165 u_24_15 <= 0
   | (mult=-0.04394069724688566)Link_u_v_24_16: v_24_15 + u_24_15 - v_24_16 >= 0
@@ -463,7 +463,7 @@ models.
   resulting combined constraint with Link_u_v_24_38, the next constraint in the sequence.
 
   | combinedcon0: - 165 u_24_37 - 330 v_24_38 + 165 v_24_39 <= 0
-  | Link_u_v_24_38: v_24_37 + u_24_37 - v_24_38 >= 0          
+  | Link_u_v_24_38: v_24_37 + u_24_37 - v_24_38 >= 0
 
   Both of them intersect the variable v24_38, so one can multiply Link_u_v_24_38 by
   -330 and add it to the combined constraint to obtain another combined constraint.
@@ -484,22 +484,22 @@ models.
   growth of the largest coefficient in the combined constraint.
 
   .. image:: _static/irish_pivots.png
-      :align: center	     
+      :align: center
 
   In each of the combined constraints, the largest coefficient is a multiple of -165
   One can assess the growth rate by looking at the sequence of integer multiples of
   -165 in the series of combined constraints.
 
   .. image:: _static/irish_pivots.png
-      :align: center	     
+      :align: center
 
   This is the Fibonacci sequence, for which Binet's formula gives value of the
   n-th Fibonacci number.
 
   .. image:: _static/Binet.png
-      :align: center	     
+      :align: center
       :scale: 60 %
-	      
+
   This pattern continues throughout the explanation and illustrates the the growth
   rate of the largest coefficient in the combined constraint occurs at an exponential
   rate.   The pivoting operations described here mimic those used to obtain the
@@ -522,11 +522,11 @@ models.
   huge power production costs would result.  However, apparently such a solution
   will not be used in practice.  However, a small change to the model
   that would enable the u and v variables to take on positive values could yield
-  drastically different results.  
-	      
-	      
-	     
-  
+  drastically different results.
+
+
+
+
 Additional Function Arguments
 *****************************
 
