@@ -11,4 +11,6 @@ from .results_analyzer import (
 
 from .solcheck import SolCheck
 
+from .scaling import scale_model
+
 set_env = _config.set_env
