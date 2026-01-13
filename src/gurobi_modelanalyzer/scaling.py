@@ -4,6 +4,7 @@ import scipy.sparse
 import numpy as np
 from typing import List, Tuple, Dict, Union
 import warnings
+from joblib import Parallel, delayed
 
 
 import gurobi_modelanalyzer.common as common
@@ -305,6 +306,155 @@ class ModelData:
             )
 
 
+def _compute_row_scaling_factor(i: int, scaled_matrix: scipy.sparse.csr_matrix, method: str) -> float:
+    """
+    Compute scaling factor for a single row.
+    
+    Parameters:
+    -----------
+    i : int
+        Row index
+    scaled_matrix : scipy.sparse.csr_matrix
+        Current scaled matrix
+    method : str
+        Scaling method ('equilibration', 'arithmetic_mean', or 'geometric_mean')
+        
+    Returns:
+    --------
+    float
+        Scaling factor for the row
+    """
+    row_data = np.abs(scaled_matrix.getrow(i).data)
+    if len(row_data) == 0:
+        return 1.0
+    
+    if method in ['equilibration', 'arithmetic_mean']:
+        return 1.0 / np.mean(row_data)
+    elif method == 'geometric_mean':
+        return 1.0 / np.sqrt(np.min(row_data) * np.max(row_data))
+    else:
+        return 1.0
+
+
+def _compute_col_scaling_factor(j: int, scaled_matrix: scipy.sparse.csr_matrix, method: str) -> float:
+    """
+    Compute scaling factor for a single column.
+    
+    Parameters:
+    -----------
+    j : int
+        Column index
+    scaled_matrix : scipy.sparse.csr_matrix
+        Current scaled matrix
+    method : str
+        Scaling method ('equilibration', 'arithmetic_mean', or 'geometric_mean')
+        
+    Returns:
+    --------
+    float
+        Scaling factor for the column
+    """
+    col_data = np.abs(scaled_matrix.getcol(j).data)
+    if len(col_data) == 0:
+        return 1.0
+    
+    if method == 'equilibration':
+        return 1.0 / np.max(col_data)
+    elif method == 'arithmetic_mean':
+        return 1.0 / np.mean(col_data)
+    elif method == 'geometric_mean':
+        return 1.0 / np.sqrt(np.min(col_data) * np.max(col_data))
+    else:
+        return 1.0
+
+
+def _compute_kkt_col_scaling_factor(i: int, KKT_matrix: scipy.sparse.csr_matrix, 
+                                    num_cols: int, cols_to_scale: List[int],
+                                    ScalingLB: float, ScalingUB: float) -> float:
+    """
+    Compute diagonal scaling factor for a single KKT matrix column.
+    
+    Parameters:
+    -----------
+    i : int
+        Column index in KKT matrix
+    KKT_matrix : scipy.sparse.csr_matrix
+        Current KKT matrix
+    num_cols : int
+        Number of variables (to distinguish variables from constraints)
+    cols_to_scale : List[int]
+        Indices of columns to scale
+    ScalingLB : float
+        Lower bound for scaling factors
+    ScalingUB : float
+        Upper bound for scaling factors
+        
+    Returns:
+    --------
+    float
+        Scaling factor for the KKT matrix column
+    """
+    if i < num_cols and i not in cols_to_scale:
+        return 1.0
+    
+    col_data = np.abs(KKT_matrix.getcol(i).data)
+    if len(col_data) == 0:
+        return 1.0
+    
+    max_val = np.max(col_data)
+    scaling_factor = 1.0 / np.sqrt(max_val)
+    return np.clip(scaling_factor, ScalingLB, ScalingUB)
+
+
+def _scale_single_qconstr(qconstr: gp.QConstr, model: gp.Model, 
+                         col_scaling: scipy.sparse.csr_matrix) -> Tuple[scipy.sparse.csr_matrix, np.ndarray, str, float, float, str]:
+    """
+    Compute scaling for a single quadratic constraint.
+    
+    Parameters:
+    -----------
+    qconstr : gp.QConstr
+        Quadratic constraint to scale
+    model : gp.Model
+        Original model containing the constraint
+    col_scaling : scipy.sparse.csr_matrix
+        Column scaling matrix
+        
+    Returns:
+    --------
+    Tuple containing:
+        - Qc_scaled: Scaled quadratic matrix
+        - q_scaled: Scaled linear vector
+        - sense: Constraint sense
+        - rhs_scaled: Scaled RHS
+        - scaling_factor: Computed scaling factor
+        - name: Constraint name
+    """
+    # Extract data from constraint
+    Qc, q = model.getQCMatrices(qconstr)
+    Qc = col_scaling @ Qc @ col_scaling
+    q = col_scaling @ q
+    rhs = qconstr.QCRHS
+    sense = qconstr.QCSense
+    name = qconstr.QCName + "_scaled"
+    
+    # Qc is upper triangular from Gurobi, make it symmetric for norm calculation
+    Qc_full = Qc + Qc.T - scipy.sparse.diags(Qc.diagonal())
+    
+    # Compute scaling factor for constraint
+    scaling_factor = 1.0 / max(
+        scipy.sparse.linalg.norm(Qc_full, ord='fro'),  # ||S*Q*S||_F (full symmetric)
+        scipy.sparse.linalg.norm(q),                   # ||S*q||_2
+        abs(rhs),                                      # |rhs|
+        1.0)
+    
+    Qc_scaled = scaling_factor * Qc
+    q_scaled = scaling_factor * q
+    rhs_scaled = scaling_factor * rhs
+    
+    return Qc_scaled, q_scaled, sense, rhs_scaled, scaling_factor, name
+
+
 def threshold_small_coefficients(data: Union[scipy.sparse.spmatrix, np.ndarray], 
                                 value_threshold: float = 1e-13) -> Union[scipy.sparse.csr_matrix, np.ndarray]:
     """
@@ -341,7 +491,8 @@ def threshold_small_coefficients(data: Union[scipy.sparse.spmatrix, np.ndarray],
 def equilibration(constr_matrix: scipy.sparse.csr_matrix, 
                   cols_to_scale: List[int], 
                   ScalePasses: int, 
-                  ScaleRelTol: float) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
+                  ScaleRelTol: float,
+                  n_jobs: int = -1) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
     """
     Scale constraint matrix using equilibration method.
     
@@ -359,6 +510,8 @@ def equilibration(constr_matrix: scipy.sparse.csr_matrix,
         Maximum number of scaling iterations
     ScaleRelTol : float
         Relative tolerance for convergence check
+    n_jobs : int, optional
+        Number of parallel threads to use. -1 means use all processors (default: -1)
         
     Returns:
     --------
@@ -376,23 +529,26 @@ def equilibration(constr_matrix: scipy.sparse.csr_matrix,
     for completed_scale_passes in range(ScalePasses):
         previous_matrix = scaled_constr_matrix.copy()
         
-        # Compute row scaling for this iteration
-        row_scaling_iter = scipy.sparse.eye(num_rows, format='csr')
-        for i in range(num_rows):
-            row_data = np.abs(scaled_constr_matrix.getrow(i).data)
-            if len(row_data) > 0:
-                row_scaling_iter[i,i] = 1.0 / np.mean(row_data)
-        
+        # Compute row scaling in parallel
+        row_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
+            delayed(_compute_row_scaling_factor)(i, scaled_constr_matrix, 'equilibration')
+            for i in range(num_rows)
+        )
+        row_scaling_iter = scipy.sparse.diags(row_factors)
         scaled_constr_matrix = row_scaling_iter @ scaled_constr_matrix
         row_scaling_total = row_scaling_iter @ row_scaling_total
         
-        # Compute column scaling for this iteration
-        col_scaling_iter = scipy.sparse.eye(num_cols, format='csr')
-        for j in cols_to_scale:
-            col_data = np.abs(scaled_constr_matrix.getcol(j).data)
-            if len(col_data) > 0:
-                col_scaling_iter[j,j] = 1.0 / np.max(col_data)
-            
+        # Compute column scaling in parallel
+        col_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
+            delayed(_compute_col_scaling_factor)(j, scaled_constr_matrix, 'equilibration')
+            for j in cols_to_scale
+        )
+        # Build full column scaling (1.0 for non-scaled columns)
+        col_factors_full = np.ones(num_cols)
+        for idx, j in enumerate(cols_to_scale):
+            col_factors_full[j] = col_factors[idx]
+        
+        col_scaling_iter = scipy.sparse.diags(col_factors_full)
         scaled_constr_matrix = scaled_constr_matrix @ col_scaling_iter
         col_scaling_total = col_scaling_total @ col_scaling_iter
         
@@ -407,7 +563,8 @@ def equilibration(constr_matrix: scipy.sparse.csr_matrix,
 def geometric_mean(constr_matrix: scipy.sparse.csr_matrix, 
                    cols_to_scale: List[int], 
                    ScalePasses: int, 
-                   ScaleRelTol: float) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
+                   ScaleRelTol: float,
+                   n_jobs: int = -1) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
     """
     Scale constraint matrix using geometric mean method.
     
@@ -424,6 +581,8 @@ def geometric_mean(constr_matrix: scipy.sparse.csr_matrix,
         Maximum number of scaling iterations
     ScaleRelTol : float
         Relative tolerance for convergence check
+    n_jobs : int, optional
+        Number of parallel threads to use. -1 means use all processors (default: -1)
         
     Returns:
     --------
@@ -441,23 +600,26 @@ def geometric_mean(constr_matrix: scipy.sparse.csr_matrix,
     for completed_scale_passes in range(ScalePasses):
         previous_matrix = scaled_constr_matrix.copy()
         
-        # Compute row scaling for this iteration
-        row_scaling_iter = scipy.sparse.eye(num_rows, format='csr')
-        for i in range(num_rows):
-            row_data = np.abs(scaled_constr_matrix.getrow(i).data)
-            if len(row_data) > 0:
-                row_scaling_iter[i,i] = 1.0 / np.sqrt(np.min(row_data) * np.max(row_data))
-        
+        # Compute row scaling in parallel
+        row_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
+            delayed(_compute_row_scaling_factor)(i, scaled_constr_matrix, 'geometric_mean')
+            for i in range(num_rows)
+        )
+        row_scaling_iter = scipy.sparse.diags(row_factors)
         scaled_constr_matrix = row_scaling_iter @ scaled_constr_matrix
         row_scaling_total = row_scaling_iter @ row_scaling_total
         
-        # Compute column scaling for this iteration
-        col_scaling_iter = scipy.sparse.eye(num_cols, format='csr')
-        for j in cols_to_scale:
-            col_data = np.abs(scaled_constr_matrix.getcol(j).data)
-            if len(col_data) > 0:
-                col_scaling_iter[j,j] = 1.0 / np.sqrt(np.min(col_data) * np.max(col_data))
-            
+        # Compute column scaling in parallel
+        col_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
+            delayed(_compute_col_scaling_factor)(j, scaled_constr_matrix, 'geometric_mean')
+            for j in cols_to_scale
+        )
+        # Build full column scaling (1.0 for non-scaled columns)
+        col_factors_full = np.ones(num_cols)
+        for idx, j in enumerate(cols_to_scale):
+            col_factors_full[j] = col_factors[idx]
+        
+        col_scaling_iter = scipy.sparse.diags(col_factors_full)
         scaled_constr_matrix = scaled_constr_matrix @ col_scaling_iter
         col_scaling_total = col_scaling_total @ col_scaling_iter
         
@@ -472,7 +634,8 @@ def geometric_mean(constr_matrix: scipy.sparse.csr_matrix,
 def arithmetic_mean(constr_matrix: scipy.sparse.csr_matrix, 
                     cols_to_scale: List[int], 
                     ScalePasses: int, 
-                    ScaleRelTol: float) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
+                    ScaleRelTol: float,
+                    n_jobs: int = -1) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
     """
     Scale constraint matrix using arithmetic mean method.
     
@@ -489,6 +652,8 @@ def arithmetic_mean(constr_matrix: scipy.sparse.csr_matrix,
         Maximum number of scaling iterations
     ScaleRelTol : float
         Relative tolerance for convergence check
+    n_jobs : int, optional
+        Number of parallel threads to use. -1 means use all processors (default: -1)
         
     Returns:
     --------
@@ -506,23 +671,26 @@ def arithmetic_mean(constr_matrix: scipy.sparse.csr_matrix,
     for completed_scale_passes in range(ScalePasses):
         previous_matrix = scaled_constr_matrix.copy()
         
-        # Compute row scaling for this iteration
-        row_scaling_iter = scipy.sparse.eye(num_rows, format='csr')
-        for i in range(num_rows):
-            row_data = np.abs(scaled_constr_matrix.getrow(i).data)
-            if len(row_data) > 0:
-                row_scaling_iter[i,i] = 1.0 / np.mean(row_data)
-        
+        # Compute row scaling in parallel
+        row_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
+            delayed(_compute_row_scaling_factor)(i, scaled_constr_matrix, 'arithmetic_mean')
+            for i in range(num_rows)
+        )
+        row_scaling_iter = scipy.sparse.diags(row_factors)
         scaled_constr_matrix = row_scaling_iter @ scaled_constr_matrix
         row_scaling_total = row_scaling_iter @ row_scaling_total
         
-        # Compute column scaling for this iteration
-        col_scaling_iter = scipy.sparse.eye(num_cols, format='csr')
-        for j in cols_to_scale:
-            col_data = np.abs(scaled_constr_matrix.getcol(j).data)
-            if len(col_data) > 0:
-                col_scaling_iter[j,j] = 1.0 / np.mean(col_data)
-            
+        # Compute column scaling in parallel
+        col_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
+            delayed(_compute_col_scaling_factor)(j, scaled_constr_matrix, 'arithmetic_mean')
+            for j in cols_to_scale
+        )
+        # Build full column scaling (1.0 for non-scaled columns)
+        col_factors_full = np.ones(num_cols)
+        for idx, j in enumerate(cols_to_scale):
+            col_factors_full[j] = col_factors[idx]
+        
+        col_scaling_iter = scipy.sparse.diags(col_factors_full)
         scaled_constr_matrix = scaled_constr_matrix @ col_scaling_iter
         col_scaling_total = col_scaling_total @ col_scaling_iter
         
@@ -544,7 +712,8 @@ def quad_equilibration(constr_matrix: scipy.sparse.csr_matrix,
                        ScalePasses: int, 
                        ScaleRelTol: float,
                        ScalingLB: float = 1e-8, 
-                       ScalingUB: float = 1e8) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, np.ndarray, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
+                       ScalingUB: float = 1e8,
+                       n_jobs: int = -1) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, np.ndarray, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
     """
     Scale quadratic program using KKT-based equilibration method.
     
@@ -570,6 +739,8 @@ def quad_equilibration(constr_matrix: scipy.sparse.csr_matrix,
         Lower bound for scaling factors (default: 1e-8)
     ScalingUB : float, optional
         Upper bound for scaling factors (default: 1e8)
+    n_jobs : int, optional
+        Number of parallel threads to use. -1 means use all processors (default: -1)
         
     Returns:
     --------
@@ -601,20 +772,12 @@ def quad_equilibration(constr_matrix: scipy.sparse.csr_matrix,
             [scaled_constr_matrix, zero_block]
         ]).tocsr()
         
-        # Reset diagonal scaling for this iteration
-        diagonal_scaling_iter = scipy.sparse.eye(num_rows + num_cols, format='csr')
-        
-        # Compute diagonal scaling factors for this iteration (M equilibration)
-        for i in range(num_rows + num_cols):
-            if i < num_cols and i not in cols_to_scale:  # Skip integer/binary variables
-                diagonal_scaling_iter[i, i] = 1.0
-            else:
-                col_data = np.abs(KKT_matrix.getcol(i).data)
-                if len(col_data) > 0:
-                    max_val = np.max(col_data)
-                    scaling_factor = 1.0 / np.sqrt(max_val)
-                    scaling_factor = np.clip(scaling_factor, ScalingLB, ScalingUB)
-                    diagonal_scaling_iter[i, i] = scaling_factor
+        # Compute diagonal scaling factors for this iteration in parallel (M equilibration)
+        diagonal_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
+            delayed(_compute_kkt_col_scaling_factor)(i, KKT_matrix, num_cols, cols_to_scale, ScalingLB, ScalingUB)
+            for i in range(num_rows + num_cols)
+        )
+        diagonal_scaling_iter = scipy.sparse.diags(diagonal_factors)
         
         # Extract column and row scaling from THIS iteration
         col_scaling_iter = scipy.sparse.diags(diagonal_scaling_iter.diagonal()[:num_cols])
@@ -674,7 +837,8 @@ def scale_model(model: gp.Model,
                 ScaleRelTol: float = 1e-4,
                 ScalingLB: float = 1e-8, 
                 ScalingUB: float = 1e8, 
-                value_threshold: float = 1e-13) -> ScaledModel:
+                value_threshold: float = 1e-13,
+                ScalingThreads: int = -1) -> ScaledModel:
     """
     Scale a Gurobi optimization model to improve numerical conditioning.
     
@@ -701,6 +865,9 @@ def scale_model(model: gp.Model,
         Upper bound for scaling factors to avoid extreme values (default: 1e8)
     value_threshold : float, optional
         Threshold below which coefficients are set to zero (default: 1e-13)
+    ScalingThreads : int, optional
+        Number of parallel threads to use for scaling computations.
+        -1 means use all available processors (default: -1)
         
     Returns:
     --------
@@ -730,13 +897,13 @@ def scale_model(model: gp.Model,
         # Compute scaled matrix and scaling factors
         if method == 'equilibration':
             scaled_matrix, row_scaling, col_scaling = equilibration(model_data.constr_matrix, cols_to_scale,
-                                                                    ScalePasses, ScaleRelTol)
+                                                                    ScalePasses, ScaleRelTol, n_jobs=ScalingThreads)
         elif method == 'geometric_mean':
             scaled_matrix, row_scaling, col_scaling = geometric_mean(model_data.constr_matrix, cols_to_scale,
-                                                                    ScalePasses, ScaleRelTol)
+                                                                    ScalePasses, ScaleRelTol, n_jobs=ScalingThreads)
         elif method == 'arithmetic_mean':
             scaled_matrix, row_scaling, col_scaling = arithmetic_mean(model_data.constr_matrix, cols_to_scale,
-                                                                    ScalePasses, ScaleRelTol)
+                                                                    ScalePasses, ScaleRelTol, n_jobs=ScalingThreads)
         # Scale objective vector (is done within quad_equilibration if Q present)
         obj_vector_scaled = col_scaling @ model_data.obj_vector
     else: # Consider Q in the scaling
@@ -746,7 +913,7 @@ def scale_model(model: gp.Model,
                         UserWarning)
         scaled_matrix, scaled_Q_matrix, obj_vector_scaled, row_scaling, col_scaling = quad_equilibration(model_data.constr_matrix, model_data.obj_vector, Q_matrix, cols_to_scale,
                                                                 ScalePasses, ScaleRelTol,
-                                                                ScalingLB=ScalingLB, ScalingUB=ScalingUB)
+                                                                ScalingLB=ScalingLB, ScalingUB=ScalingUB, n_jobs=ScalingThreads)
             
     # Compute scaled data
     rhs_vector_scaled = row_scaling @ model_data.rhs_vector
@@ -813,30 +980,20 @@ def scale_model(model: gp.Model,
         model_scaled.update()
     # Scale quadratic constraints if present
     if model.isQCP:
+        qconstrs = model.getQConstrs()
+        # Process quadratic constraints in parallel
+        qconstr_results = Parallel(n_jobs=ScalingThreads, prefer='threads')(
+            delayed(_scale_single_qconstr)(qconstr, model, col_scaling)
+            for qconstr in qconstrs
+        )
+        
+        # Add scaled quadratic constraints to model
         quad_scaling_factors = []
-        for qconstr in model.getQConstrs():
-            # Extract data from constraint
-            Qc, q = model.getQCMatrices(qconstr)
-            Qc = col_scaling @ Qc @ col_scaling
-            q = col_scaling @ q
-            rhs  = qconstr.QCRHS
-            sense = qconstr.QCSense
-            name = qconstr.QCName + "_scaled"
-            # Qc is upper triangular from Gurobi, make it symmetric for norm calculation
-            Qc_full = Qc + Qc.T - scipy.sparse.diags(Qc.diagonal())
-            # Compute scaling factor for constraint
-            scaling_factor = 1.0 / max(
-                scipy.sparse.linalg.norm(Qc_full, ord='fro'), # ||S*Q*S||_F (full symmetric)
-                scipy.sparse.linalg.norm(q),                  # ||S*q||_2
-                abs(rhs),                                     # |rhs|     
-                1.0)
-            quad_scaling_factors.append(scaling_factor)
-            Qc = scaling_factor * Qc
-            q = scaling_factor * q
-            rhs = scaling_factor * rhs
-            # Add scaled quadratic constraint
+        for Qc_scaled, q_scaled, sense, rhs_scaled, scaling_factor, name in qconstr_results:
             model_scaled.addMQConstr(
-                Qc, q.toarray().flatten(), sense, rhs, name=name)
+                Qc_scaled, q_scaled.toarray().flatten(), sense, rhs_scaled, name=name)
+            quad_scaling_factors.append(scaling_factor)
+        
         model_scaled.update()
         # Add scaling factors to scaled model
         model_scaled._quad_scaling_factors = quad_scaling_factors
