@@ -5,9 +5,154 @@ import numpy as np
 from typing import List, Tuple, Dict, Union
 import warnings
 from joblib import Parallel, delayed
+import time
+import io
+import sys
 
 
 import gurobi_modelanalyzer.common as common
+
+
+def _capture_model_stats(model: gp.Model) -> str:
+    """
+    Capture the output of model.printStats() as a string.
+    
+    Parameters:
+    -----------
+    model : gp.Model
+        The Gurobi model to analyze
+        
+    Returns:
+    --------
+    str
+        The statistics output as a string
+    """
+    # Ensure model is updated before capturing stats
+    model.update()
+    
+    # Capture stdout
+    old_stdout = sys.stdout
+    sys.stdout = buffer = io.StringIO()
+    
+    try:
+        model.printStats()
+        output = buffer.getvalue()
+    finally:
+        sys.stdout = old_stdout
+    
+    return output
+
+
+def _print_scaling_log(method: str, original_stats: str, scale_passes: int, 
+                       iteration_logs: List[Dict], total_time: float, 
+                       final_stats: str, log_file: str = "", log_to_console: int = 1,
+                       scaling_time_limit: float = float('inf'), mode: str = 'final'):
+    """
+    Print/write formatted scaling log with header, iteration table, and final results.
+    
+    Parameters:
+    -----------
+    method : str
+        Scaling method name
+    original_stats : str
+        Statistics output from original model's printStats()
+    scale_passes : int
+        Number of scale passes requested
+    iteration_logs : List[Dict]
+        List of dictionaries containing iteration information
+    total_time : float
+        Total elapsed time for scaling
+    final_stats : str
+        Statistics output from scaled model's printStats()
+    log_file : str, optional
+        File path to write log to (default: "" - no file output)
+    log_to_console : int, optional
+        1 to print to console, 0 to suppress (default: 1)
+    scaling_time_limit : float, optional
+        Time limit for scaling (default: inf)
+    mode : str, optional
+        'header' = print header and table header only
+        'iteration' = print single iteration row (iteration_logs should have 1 entry)
+        'final' = print complete log (default)
+    """
+    if mode == 'header':
+        # Print header and table header for real-time logging
+        if log_to_console:
+            print("\n" + "-"*80)
+            print(f"Scaling Method: {method}")
+            print(f"Scale Passes:   {scale_passes}")
+            if scaling_time_limit != float('inf'):
+                print(f"Time Limit:     {scaling_time_limit:.2f} seconds")
+            print("\nOriginal Model Statistics:")
+            print(original_stats.rstrip())
+            print("\n" + "-"*80)
+            print(f"{'Scale Pass':<12} {'Rel. Change':<15} {'Time (s)':<15}")
+            print("-"*80)
+            sys.stdout.flush()
+        return
+    
+    if mode == 'iteration':
+        # Print single iteration row for real-time logging
+        if log_to_console and len(iteration_logs) > 0:
+            log = iteration_logs[-1]  # Get last (current) iteration
+            pass_num = log.get('pass', '-')
+            rel_change = log.get('rel_change', 0.0)
+            iter_time = log.get('time', 0.0)
+            
+            if isinstance(rel_change, float):
+                print(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.6f}")
+            else:
+                print(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.6f}")
+            sys.stdout.flush()
+        return
+    
+    # mode == 'final': Build complete log content
+    log_lines = []
+    log_lines.append("\n" + "-"*80)
+    
+    # Header
+    log_lines.append(f"Scaling Method: {method}")
+    log_lines.append(f"Scale Passes:   {scale_passes}")
+    if scaling_time_limit != float('inf'):
+        log_lines.append(f"Time Limit:     {scaling_time_limit:.2f} seconds")
+    log_lines.append("\nOriginal Model Statistics:")
+    log_lines.append(original_stats.rstrip())
+    
+    # Iteration table
+    log_lines.append("\n" + "-"*80)
+    log_lines.append(f"{'Scale Pass':<12} {'Rel. Change':<15} {'Time (s)':<15}")
+    log_lines.append("-"*80)
+    
+    for log in iteration_logs:
+        pass_num = log.get('pass', '-')
+        rel_change = log.get('rel_change', 0.0)
+        iter_time = log.get('time', 0.0)
+        
+        if isinstance(rel_change, float):
+            log_lines.append(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.6f}")
+        else:
+            log_lines.append(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.6f}")
+    
+    log_lines.append("-"*80)
+    
+    # Final results
+    log_lines.append(f"\nScaling completed in {total_time:.6f} seconds")
+    log_lines.append("\nScaled Model Statistics:")
+    log_lines.append(final_stats.rstrip())
+    log_lines.append("-"*80 + "\n")
+    
+    # Combine all lines
+    log_content = "\n".join(log_lines)
+    
+    # Print to console if requested
+    if log_to_console:
+        print(log_content)
+    
+    # Write to file if specified
+    if log_file:
+        with open(log_file, 'w') as f:
+            f.write(log_content)
+
 
 class ScaledVar:
     """
@@ -248,6 +393,42 @@ class ScaledModel(gp.Model):
             Maximum bound violation, or None if not computed
         """
         return getattr(self, '_max_unsc_bound_vio', None)
+    
+    @property
+    def ScalingTime(self):
+        """
+        Get the time taken to scale the model.
+        
+        Returns:
+        --------
+        float
+            Scaling time in seconds, or None if not available
+        """
+        return getattr(self, '_scaling_time', None)
+    
+    @property
+    def ColScaling(self):
+        """
+        Get the column scaling matrix.
+        
+        Returns:
+        --------
+        scipy.sparse.csr_matrix
+            Diagonal matrix with column scaling factors, or None if not available
+        """
+        return getattr(self, '_col_scaling', None)
+    
+    @property
+    def RowScaling(self):
+        """
+        Get the row scaling matrix.
+        
+        Returns:
+        --------
+        scipy.sparse.csr_matrix
+            Diagonal matrix with row scaling factors, or None if not available
+        """
+        return getattr(self, '_row_scaling', None)
 
 
 class ModelData:
@@ -438,15 +619,20 @@ def _scale_single_qconstr(qconstr: gp.QConstr, model: gp.Model,
     sense = qconstr.QCSense
     name = qconstr.QCName + "_scaled"
     
-    # Qc is upper triangular from Gurobi, make it symmetric for norm calculation
-    Qc_full = Qc + Qc.T - scipy.sparse.diags(Qc.diagonal())
+    # Compute Frobenius norm efficiently for upper triangular matrix
+    # For symmetric matrix: ||A||_F^2 = sum(A_ij^2) for all i,j
+    # For upper triangular Q: ||Q + Q^T - diag(Q)||_F^2 = 2*sum(Q_ij^2) - sum(Q_ii^2)
+    # Faster: sqrt(2 * ||Q||_F^2 - ||diag(Q)||_2^2)
+    if Qc.nnz > 0:
+        Qc_norm_sq = np.sum(Qc.data ** 2)  # ||Q||_F^2
+        Qc_diag_norm_sq = np.sum(Qc.diagonal() ** 2)  # ||diag(Q)||_2^2
+        Qc_full_norm = np.sqrt(2.0 * Qc_norm_sq - Qc_diag_norm_sq)
+    else:
+        Qc_full_norm = 0.0
     
     # Compute scaling factor for constraint
-    scaling_factor = 1.0 / max(
-        scipy.sparse.linalg.norm(Qc_full, ord='fro'),  # ||S*Q*S||_F (full symmetric)
-        scipy.sparse.linalg.norm(q),                   # ||S*q||_2
-        abs(rhs),                                      # |rhs|
-        1.0)
+    q_norm = np.linalg.norm(q) if q.size > 0 else 0.0
+    scaling_factor = 1.0 / max(Qc_full_norm, q_norm, abs(rhs), 1.0)
     
     Qc_scaled = scaling_factor * Qc
     q_scaled = scaling_factor * q
@@ -492,7 +678,7 @@ def equilibration(constr_matrix: scipy.sparse.csr_matrix,
                   cols_to_scale: List[int], 
                   ScalePasses: int, 
                   ScaleRelTol: float,
-                  n_jobs: int = -1) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
+                  ScalingTimeLimit: float = float('inf')) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, List[Dict]]:
     """
     Scale constraint matrix using equilibration method.
     
@@ -510,61 +696,93 @@ def equilibration(constr_matrix: scipy.sparse.csr_matrix,
         Maximum number of scaling iterations
     ScaleRelTol : float
         Relative tolerance for convergence check
+    ScalingTimeLimit : float, optional
+        Time limit in seconds for scaling iterations (default: inf - no limit)
     n_jobs : int, optional
         Number of parallel threads to use. -1 means use all processors (default: -1)
         
     Returns:
     --------
-    Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]
+    Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, List[Dict]]
         - scaled_constr_matrix: The scaled constraint matrix
         - row_scaling_total: Cumulative row scaling matrix (diagonal)
         - col_scaling_total: Cumulative column scaling matrix (diagonal)
+        - iteration_logs: List of iteration information dictionaries
     """
     scaled_constr_matrix = constr_matrix
     # Initialize scaling matrices
     num_rows, num_cols = constr_matrix.shape
     row_scaling_total = scipy.sparse.eye(num_rows, format='csr')
     col_scaling_total = scipy.sparse.eye(num_cols, format='csr')
+    iteration_logs = []
+    total_elapsed_time = 0.0
+    
+    # Convert to CSC once for efficient column operations
+    scaled_constr_matrix_csc = scaled_constr_matrix.tocsc()
     
     for completed_scale_passes in range(ScalePasses):
-        previous_matrix = scaled_constr_matrix.copy()
+        iter_start_time = time.time()
         
-        # Compute row scaling in parallel
-        row_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
-            delayed(_compute_row_scaling_factor)(i, scaled_constr_matrix, 'equilibration')
-            for i in range(num_rows)
-        )
+        # Convert CSC back to CSR for row operations
+        scaled_constr_matrix = scaled_constr_matrix_csc.tocsr()
+        
+        # Compute row scaling factors (vectorized - much faster than parallel for large matrices)
+        row_factors = np.zeros(num_rows)
+        for i in range(num_rows):
+            row_data = np.abs(scaled_constr_matrix.getrow(i).data)
+            row_factors[i] = 1.0 / np.mean(row_data) if len(row_data) > 0 else 1.0
+        
+        # Apply row scaling (in-place multiplication with diagonal)
         row_scaling_iter = scipy.sparse.diags(row_factors)
         scaled_constr_matrix = row_scaling_iter @ scaled_constr_matrix
         row_scaling_total = row_scaling_iter @ row_scaling_total
         
-        # Compute column scaling in parallel
-        col_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
-            delayed(_compute_col_scaling_factor)(j, scaled_constr_matrix, 'equilibration')
-            for j in cols_to_scale
-        )
-        # Build full column scaling (1.0 for non-scaled columns)
-        col_factors_full = np.ones(num_cols)
-        for idx, j in enumerate(cols_to_scale):
-            col_factors_full[j] = col_factors[idx]
+        # Convert to CSC for column operations
+        scaled_constr_matrix_csc = scaled_constr_matrix.tocsc()
         
+        # Compute column scaling factors (using CSC format)
+        col_factors_full = np.ones(num_cols)
+        cols_to_scale_set = set(cols_to_scale)  # Faster lookup
+        for j in range(num_cols):
+            if j in cols_to_scale_set:
+                col_data = np.abs(scaled_constr_matrix_csc.getcol(j).data)
+                col_factors_full[j] = 1.0 / np.max(col_data) if len(col_data) > 0 else 1.0
+        
+        # Apply column scaling
         col_scaling_iter = scipy.sparse.diags(col_factors_full)
-        scaled_constr_matrix = scaled_constr_matrix @ col_scaling_iter
+        scaled_constr_matrix_csc = scaled_constr_matrix_csc @ col_scaling_iter
         col_scaling_total = col_scaling_total @ col_scaling_iter
         
-        # Check convergence
-        norm_diff = scipy.sparse.linalg.norm(scaled_constr_matrix - previous_matrix, ord='fro')
-        norm_prev = scipy.sparse.linalg.norm(previous_matrix, ord='fro')
-        if norm_diff / norm_prev < ScaleRelTol:
+        # Check convergence (compute relative change from scaling factors instead of matrix norm)
+        rel_change = max(np.max(np.abs(row_factors - 1.0)), np.max(np.abs(col_factors_full - 1.0)))
+        
+        iter_time = time.time() - iter_start_time
+        total_elapsed_time += iter_time
+        iteration_logs.append({
+            'pass': completed_scale_passes + 1,
+            'rel_change': rel_change,
+            'time': iter_time
+        })
+        
+        # Print iteration in real-time
+        _print_scaling_log('', '', 0, iteration_logs, 0.0, '', '', 1, mode='iteration')
+        
+        if rel_change < ScaleRelTol:
+            break
+        
+        # Check time limit
+        if total_elapsed_time >= ScalingTimeLimit:
             break
     
-    return scaled_constr_matrix, row_scaling_total, col_scaling_total
+    # Convert back to CSR format for final output
+    scaled_constr_matrix = scaled_constr_matrix_csc.tocsr()
+    return scaled_constr_matrix, row_scaling_total, col_scaling_total, iteration_logs
 
 def geometric_mean(constr_matrix: scipy.sparse.csr_matrix, 
                    cols_to_scale: List[int], 
                    ScalePasses: int, 
                    ScaleRelTol: float,
-                   n_jobs: int = -1) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
+                   ScalingTimeLimit: float = float('inf')) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, List[Dict]]:
     """
     Scale constraint matrix using geometric mean method.
     
@@ -581,61 +799,102 @@ def geometric_mean(constr_matrix: scipy.sparse.csr_matrix,
         Maximum number of scaling iterations
     ScaleRelTol : float
         Relative tolerance for convergence check
-    n_jobs : int, optional
-        Number of parallel threads to use. -1 means use all processors (default: -1)
+    ScalingTimeLimit : float, optional
+        Time limit in seconds for scaling iterations (default: inf - no limit)
         
     Returns:
     --------
-    Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]
+    Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, List[Dict]]
         - scaled_constr_matrix: The scaled constraint matrix
         - row_scaling_total: Cumulative row scaling matrix (diagonal)
         - col_scaling_total: Cumulative column scaling matrix (diagonal)
+        - iteration_logs: List of iteration information dictionaries
     """
     scaled_constr_matrix = constr_matrix
     # Initialize scaling matrices
     num_rows, num_cols = constr_matrix.shape
     row_scaling_total = scipy.sparse.eye(num_rows, format='csr')
     col_scaling_total = scipy.sparse.eye(num_cols, format='csr')
+    iteration_logs = []
+    total_elapsed_time = 0.0
+    
+    # Convert to CSC once for efficient column operations
+    scaled_constr_matrix_csc = scaled_constr_matrix.tocsc()
     
     for completed_scale_passes in range(ScalePasses):
-        previous_matrix = scaled_constr_matrix.copy()
+        iter_start_time = time.time()
         
-        # Compute row scaling in parallel
-        row_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
-            delayed(_compute_row_scaling_factor)(i, scaled_constr_matrix, 'geometric_mean')
-            for i in range(num_rows)
-        )
+        # Convert CSC back to CSR for row operations
+        scaled_constr_matrix = scaled_constr_matrix_csc.tocsr()
+        
+        # Compute row scaling factors (vectorized)
+        row_factors = np.zeros(num_rows)
+        for i in range(num_rows):
+            row_data = np.abs(scaled_constr_matrix.getrow(i).data)
+            if len(row_data) > 0:
+                row_factors[i] = 1.0 / np.sqrt(np.min(row_data) * np.max(row_data))
+            else:
+                row_factors[i] = 1.0
+        
+        # Apply row scaling
         row_scaling_iter = scipy.sparse.diags(row_factors)
         scaled_constr_matrix = row_scaling_iter @ scaled_constr_matrix
         row_scaling_total = row_scaling_iter @ row_scaling_total
         
-        # Compute column scaling in parallel
-        col_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
-            delayed(_compute_col_scaling_factor)(j, scaled_constr_matrix, 'geometric_mean')
-            for j in cols_to_scale
-        )
-        # Build full column scaling (1.0 for non-scaled columns)
-        col_factors_full = np.ones(num_cols)
-        for idx, j in enumerate(cols_to_scale):
-            col_factors_full[j] = col_factors[idx]
+        # Convert to CSC for column operations
+        scaled_constr_matrix_csc = scaled_constr_matrix.tocsc()
         
+        # Compute column scaling factors using CSC format's internal arrays (MUCH faster)
+        col_factors_full = np.ones(num_cols)
+        cols_to_scale_set = set(cols_to_scale)  # Faster lookup
+        
+        # Access CSC internal arrays directly for speed
+        csc_data = np.abs(scaled_constr_matrix_csc.data)
+        csc_indptr = scaled_constr_matrix_csc.indptr
+        
+        for j in range(num_cols):
+            if j in cols_to_scale_set:
+                start_idx = csc_indptr[j]
+                end_idx = csc_indptr[j + 1]
+                if end_idx > start_idx:  # Column has data
+                    col_data = csc_data[start_idx:end_idx]
+                    col_factors_full[j] = 1.0 / np.sqrt(np.min(col_data) * np.max(col_data))
+        
+        # Apply column scaling
         col_scaling_iter = scipy.sparse.diags(col_factors_full)
-        scaled_constr_matrix = scaled_constr_matrix @ col_scaling_iter
+        scaled_constr_matrix_csc = scaled_constr_matrix_csc @ col_scaling_iter
         col_scaling_total = col_scaling_total @ col_scaling_iter
         
-        # Check convergence
-        norm_diff = scipy.sparse.linalg.norm(scaled_constr_matrix - previous_matrix, ord='fro')
-        norm_prev = scipy.sparse.linalg.norm(previous_matrix, ord='fro')
-        if norm_diff / norm_prev < ScaleRelTol:
+        # Check convergence (from scaling factors)
+        rel_change = max(np.max(np.abs(row_factors - 1.0)), np.max(np.abs(col_factors_full - 1.0)))
+        
+        iter_time = time.time() - iter_start_time
+        total_elapsed_time += iter_time
+        iteration_logs.append({
+            'pass': completed_scale_passes + 1,
+            'rel_change': rel_change,
+            'time': iter_time
+        })
+        
+        # Print iteration in real-time
+        _print_scaling_log('', '', 0, iteration_logs, 0.0, '', '', 1, mode='iteration')
+        
+        if rel_change < ScaleRelTol:
             break
-
-    return scaled_constr_matrix, row_scaling_total, col_scaling_total
+        
+        # Check time limit
+        if total_elapsed_time >= ScalingTimeLimit:
+            break
+    
+    # Convert back to CSR format for final output
+    scaled_constr_matrix = scaled_constr_matrix_csc.tocsr()
+    return scaled_constr_matrix, row_scaling_total, col_scaling_total, iteration_logs
 
 def arithmetic_mean(constr_matrix: scipy.sparse.csr_matrix, 
                     cols_to_scale: List[int], 
                     ScalePasses: int, 
                     ScaleRelTol: float,
-                    n_jobs: int = -1) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
+                    ScalingTimeLimit: float = float('inf')) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, List[Dict]]:
     """
     Scale constraint matrix using arithmetic mean method.
     
@@ -652,58 +911,93 @@ def arithmetic_mean(constr_matrix: scipy.sparse.csr_matrix,
         Maximum number of scaling iterations
     ScaleRelTol : float
         Relative tolerance for convergence check
-    n_jobs : int, optional
-        Number of parallel threads to use. -1 means use all processors (default: -1)
+    ScalingTimeLimit : float, optional
+        Time limit in seconds for scaling iterations (default: inf - no limit)
         
     Returns:
     --------
-    Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]
+    Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, List[Dict]]
         - scaled_constr_matrix: The scaled constraint matrix
         - row_scaling_total: Cumulative row scaling matrix (diagonal)
         - col_scaling_total: Cumulative column scaling matrix (diagonal)
+        - iteration_logs: List of iteration information dictionaries
     """
-    scaled_constr_matrix = constr_matrix.copy()
+    scaled_constr_matrix = constr_matrix
     # Initialize scaling matrices
     num_rows, num_cols = constr_matrix.shape
     row_scaling_total = scipy.sparse.eye(num_rows, format='csr')
     col_scaling_total = scipy.sparse.eye(num_cols, format='csr')
+    iteration_logs = []
+    total_elapsed_time = 0.0
+    
+    # Convert to CSC once for efficient column operations
+    scaled_constr_matrix_csc = scaled_constr_matrix.tocsc()
     
     for completed_scale_passes in range(ScalePasses):
-        previous_matrix = scaled_constr_matrix.copy()
+        iter_start_time = time.time()
         
-        # Compute row scaling in parallel
-        row_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
-            delayed(_compute_row_scaling_factor)(i, scaled_constr_matrix, 'arithmetic_mean')
-            for i in range(num_rows)
-        )
+        # Convert CSC back to CSR for row operations
+        scaled_constr_matrix = scaled_constr_matrix_csc.tocsr()
+        
+        # Compute row scaling factors (vectorized)
+        row_factors = np.zeros(num_rows)
+        for i in range(num_rows):
+            row_data = np.abs(scaled_constr_matrix.getrow(i).data)
+            row_factors[i] = 1.0 / np.mean(row_data) if len(row_data) > 0 else 1.0
+        
+        # Apply row scaling
         row_scaling_iter = scipy.sparse.diags(row_factors)
         scaled_constr_matrix = row_scaling_iter @ scaled_constr_matrix
         row_scaling_total = row_scaling_iter @ row_scaling_total
         
-        # Compute column scaling in parallel
-        col_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
-            delayed(_compute_col_scaling_factor)(j, scaled_constr_matrix, 'arithmetic_mean')
-            for j in cols_to_scale
-        )
-        # Build full column scaling (1.0 for non-scaled columns)
-        col_factors_full = np.ones(num_cols)
-        for idx, j in enumerate(cols_to_scale):
-            col_factors_full[j] = col_factors[idx]
+        # Convert to CSC for column operations
+        scaled_constr_matrix_csc = scaled_constr_matrix.tocsc()
         
+        # Compute column scaling factors using CSC format's internal arrays (MUCH faster)
+        col_factors_full = np.ones(num_cols)
+        cols_to_scale_set = set(cols_to_scale)  # Faster lookup
+        
+        # Access CSC internal arrays directly for speed
+        csc_data = np.abs(scaled_constr_matrix_csc.data)
+        csc_indptr = scaled_constr_matrix_csc.indptr
+        
+        for j in range(num_cols):
+            if j in cols_to_scale_set:
+                start_idx = csc_indptr[j]
+                end_idx = csc_indptr[j + 1]
+                if end_idx > start_idx:  # Column has data
+                    col_data = csc_data[start_idx:end_idx]
+                    col_factors_full[j] = 1.0 / np.mean(col_data)
+        
+        # Apply column scaling
         col_scaling_iter = scipy.sparse.diags(col_factors_full)
-        scaled_constr_matrix = scaled_constr_matrix @ col_scaling_iter
+        scaled_constr_matrix_csc = scaled_constr_matrix_csc @ col_scaling_iter
         col_scaling_total = col_scaling_total @ col_scaling_iter
         
-        # Check convergence
-        norm_diff = scipy.sparse.linalg.norm(scaled_constr_matrix - previous_matrix, ord='fro')
-        norm_prev = scipy.sparse.linalg.norm(previous_matrix, ord='fro')
-        if norm_diff / norm_prev < ScaleRelTol:
+        # Check convergence (from scaling factors)
+        rel_change = max(np.max(np.abs(row_factors - 1.0)), np.max(np.abs(col_factors_full - 1.0)))
+        
+        iter_time = time.time() - iter_start_time
+        total_elapsed_time += iter_time
+        iteration_logs.append({
+            'pass': completed_scale_passes + 1,
+            'rel_change': rel_change,
+            'time': iter_time
+        })
+        
+        # Print iteration in real-time
+        _print_scaling_log('', '', 0, iteration_logs, 0.0, '', '', 1, mode='iteration')
+        
+        if rel_change < ScaleRelTol:
             break
-
-
-    return scaled_constr_matrix, row_scaling_total, col_scaling_total
-
-
+        
+        # Check time limit
+        if total_elapsed_time >= ScalingTimeLimit:
+            break
+    
+    # Convert back to CSR format for final output
+    scaled_constr_matrix = scaled_constr_matrix_csc.tocsr()
+    return scaled_constr_matrix, row_scaling_total, col_scaling_total, iteration_logs
 
 def quad_equilibration(constr_matrix: scipy.sparse.csr_matrix, 
                        obj_vector: np.ndarray, 
@@ -713,7 +1007,7 @@ def quad_equilibration(constr_matrix: scipy.sparse.csr_matrix,
                        ScaleRelTol: float,
                        ScalingLB: float = 1e-8, 
                        ScalingUB: float = 1e8,
-                       n_jobs: int = -1) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, np.ndarray, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]:
+                       ScalingTimeLimit: float = float('inf')) -> Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, np.ndarray, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, List[Dict]]:
     """
     Scale quadratic program using KKT-based equilibration method.
     
@@ -739,17 +1033,18 @@ def quad_equilibration(constr_matrix: scipy.sparse.csr_matrix,
         Lower bound for scaling factors (default: 1e-8)
     ScalingUB : float, optional
         Upper bound for scaling factors (default: 1e8)
-    n_jobs : int, optional
-        Number of parallel threads to use. -1 means use all processors (default: -1)
+    ScalingTimeLimit : float, optional
+        Time limit in seconds for scaling iterations (default: inf - no limit)
         
     Returns:
     --------
-    Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, np.ndarray, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix]
+    Tuple[scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, np.ndarray, scipy.sparse.csr_matrix, scipy.sparse.csr_matrix, List[Dict]]
         - scaled_constr_matrix: The scaled constraint matrix
         - scaled_Q_matrix: The scaled quadratic objective matrix
         - scaled_obj_vector: The scaled linear objective vector
         - row_scaling_total: Cumulative row scaling matrix (diagonal)
         - col_scaling_total: Cumulative column scaling matrix (diagonal)
+        - iteration_logs: List of iteration information dictionaries
     """
     scaled_constr_matrix = constr_matrix.copy()
     scaled_Q_matrix = Q_matrix.copy()
@@ -760,23 +1055,43 @@ def quad_equilibration(constr_matrix: scipy.sparse.csr_matrix,
     diagonal_scaling_total = scipy.sparse.eye(num_rows + num_cols, format='csr')
     obj_scaling_factor_total = 1.0
     zero_block = scipy.sparse.csr_matrix((num_rows, num_rows))
+    iteration_logs = []
+    total_elapsed_time = 0.0
     
     for completed_scale_passes in range(ScalePasses):
+        iter_start_time = time.time()
         previous_constr_matrix = scaled_constr_matrix.copy()
         previous_Q_matrix = scaled_Q_matrix.copy()
         previous_obj_vector = scaled_obj_vector.copy()
         
-        # Build KKT matrix from CURRENT scaled matrices
+        # Build KKT matrix from CURRENT scaled matrices and convert to CSC for column operations
         KKT_matrix = scipy.sparse.bmat([
             [scaled_Q_matrix, scaled_constr_matrix.T],
             [scaled_constr_matrix, zero_block]
-        ]).tocsr()
+        ]).tocsc()  # CSC format for efficient column access
         
-        # Compute diagonal scaling factors for this iteration in parallel (M equilibration)
-        diagonal_factors = Parallel(n_jobs=n_jobs, prefer='threads')(
-            delayed(_compute_kkt_col_scaling_factor)(i, KKT_matrix, num_cols, cols_to_scale, ScalingLB, ScalingUB)
-            for i in range(num_rows + num_cols)
-        )
+        # Compute diagonal scaling factors using CSC direct access (much faster than getcol)
+        diagonal_factors = np.ones(num_rows + num_cols)
+        cols_to_scale_set = set(cols_to_scale)
+        
+        # Access CSC internal arrays directly for speed
+        kkt_data = np.abs(KKT_matrix.data)
+        kkt_indptr = KKT_matrix.indptr
+        
+        for i in range(num_rows + num_cols):
+            # Skip integer/binary variable columns
+            if i < num_cols and i not in cols_to_scale_set:
+                continue
+            
+            # Get column data using direct array access
+            start_idx = kkt_indptr[i]
+            end_idx = kkt_indptr[i + 1]
+            
+            if end_idx > start_idx:  # Column has data
+                col_data = kkt_data[start_idx:end_idx]
+                max_val = np.max(col_data)
+                scaling_factor = 1.0 / np.sqrt(max_val)
+                diagonal_factors[i] = np.clip(scaling_factor, ScalingLB, ScalingUB)
         diagonal_scaling_iter = scipy.sparse.diags(diagonal_factors)
         
         # Extract column and row scaling from THIS iteration
@@ -817,18 +1132,39 @@ def quad_equilibration(constr_matrix: scipy.sparse.csr_matrix,
         norm_Q_diff = scipy.sparse.linalg.norm(scaled_Q_matrix - previous_Q_matrix, ord='fro')
         norm_Q_prev = scipy.sparse.linalg.norm(previous_Q_matrix, ord='fro')
         
+        rel_change = 0.0
+        if norm_constr_prev > 0 and norm_Q_prev > 0:
+            rel_constr_diff = norm_constr_diff / norm_constr_prev
+            rel_Q_diff = norm_Q_diff / norm_Q_prev
+            rel_change = max(rel_constr_diff, rel_Q_diff)
+        
+        iter_time = time.time() - iter_start_time
+        total_elapsed_time += iter_time
+        iteration_logs.append({
+            'pass': completed_scale_passes + 1,
+            'rel_change': rel_change,
+            'time': iter_time
+        })
+        
+        # Print iteration in real-time
+        _print_scaling_log('', '', 0, iteration_logs, 0.0, '', '', 1, mode='iteration')
+        
         if norm_constr_prev > 0 and norm_Q_prev > 0:
             rel_constr_diff = norm_constr_diff / norm_constr_prev
             rel_Q_diff = norm_Q_diff / norm_Q_prev
             
             if rel_constr_diff < ScaleRelTol and rel_Q_diff < ScaleRelTol:
                 break
+        
+        # Check time limit
+        if total_elapsed_time >= ScalingTimeLimit:
+            break
     
     # Extract final column and row scaling
     col_scaling_total = scipy.sparse.diags(diagonal_scaling_total.diagonal()[:num_cols])
     row_scaling_total = scipy.sparse.diags(diagonal_scaling_total.diagonal()[num_cols:])
     
-    return scaled_constr_matrix, scaled_Q_matrix, scaled_obj_vector, row_scaling_total, col_scaling_total
+    return scaled_constr_matrix, scaled_Q_matrix, scaled_obj_vector, row_scaling_total, col_scaling_total, iteration_logs
     
 
 def scale_model(model: gp.Model, 
@@ -838,7 +1174,9 @@ def scale_model(model: gp.Model,
                 ScalingLB: float = 1e-8, 
                 ScalingUB: float = 1e8, 
                 value_threshold: float = 1e-13,
-                ScalingThreads: int = -1) -> ScaledModel:
+                ScalingTimeLimit: float = float('inf'),
+                ScalingLog: str = "",
+                ScalingLogToConsole: int = 1) -> ScaledModel:
     """
     Scale a Gurobi optimization model to improve numerical conditioning.
     
@@ -865,9 +1203,13 @@ def scale_model(model: gp.Model,
         Upper bound for scaling factors to avoid extreme values (default: 1e8)
     value_threshold : float, optional
         Threshold below which coefficients are set to zero (default: 1e-13)
-    ScalingThreads : int, optional
-        Number of parallel threads to use for scaling computations.
-        -1 means use all available processors (default: -1)
+    ScalingTimeLimit : float, optional
+        Time limit in seconds for scaling iterations. Scaling will stop when this
+        limit is reached and use the latest scaled matrices (default: inf - no limit)
+    ScalingLog : str, optional
+        File path to write scaling log to. Empty string means no file output (default: "")
+    ScalingLogToConsole : int, optional
+        1 to print scaling log to console, 0 to suppress console output (default: 1)
         
     Returns:
     --------
@@ -881,8 +1223,23 @@ def scale_model(model: gp.Model,
     - Integer and binary variables are not scaled (only continuous variables)
     - The scaled model includes scaling matrices stored as _col_scaling and _row_scaling attributes
     """
+    # Start timing
+    total_start_time = time.time()
+    
+    # Ensure model is updated
+    model.update()
+    
+    # Manage OutputFlag: temporarily enable if needed for logging
+    original_output_flag = model.Params.OutputFlag
+    needs_output = ScalingLogToConsole or ScalingLog
+    if original_output_flag == 0 and needs_output:
+        model.setParam('OutputFlag', 1)
+    
     # Get model data from original model
     model_data = ModelData.from_gurobi_model(model)
+    
+    # Capture original model statistics
+    original_stats = _capture_model_stats(model)
     
     # Compute list of columns to scale (don't scale binary/integer variables)
     cols_to_scale = []
@@ -893,17 +1250,24 @@ def scale_model(model: gp.Model,
     # Check if model has quadratic objective terms
     Q_matrix = model.getQ()
     
+    iteration_logs = []
+    
+    # Print log header if logging is enabled
+    if ScalingLogToConsole or ScalingLog:
+        _print_scaling_log(method, original_stats, ScalePasses, [], 0.0, "", 
+                          ScalingLog, ScalingLogToConsole, ScalingTimeLimit, mode='header')
+    
     if Q_matrix.nnz == 0: # No quadratic objective, use constraint matrix only
         # Compute scaled matrix and scaling factors
         if method == 'equilibration':
-            scaled_matrix, row_scaling, col_scaling = equilibration(model_data.constr_matrix, cols_to_scale,
-                                                                    ScalePasses, ScaleRelTol, n_jobs=ScalingThreads)
+            scaled_matrix, row_scaling, col_scaling, iteration_logs = equilibration(model_data.constr_matrix, cols_to_scale,
+                                                                    ScalePasses, ScaleRelTol, ScalingTimeLimit=ScalingTimeLimit)
         elif method == 'geometric_mean':
-            scaled_matrix, row_scaling, col_scaling = geometric_mean(model_data.constr_matrix, cols_to_scale,
-                                                                    ScalePasses, ScaleRelTol, n_jobs=ScalingThreads)
+            scaled_matrix, row_scaling, col_scaling, iteration_logs = geometric_mean(model_data.constr_matrix, cols_to_scale,
+                                                                    ScalePasses, ScaleRelTol, ScalingTimeLimit=ScalingTimeLimit)
         elif method == 'arithmetic_mean':
-            scaled_matrix, row_scaling, col_scaling = arithmetic_mean(model_data.constr_matrix, cols_to_scale,
-                                                                    ScalePasses, ScaleRelTol, n_jobs=ScalingThreads)
+            scaled_matrix, row_scaling, col_scaling, iteration_logs = arithmetic_mean(model_data.constr_matrix, cols_to_scale,
+                                                                    ScalePasses, ScaleRelTol, ScalingTimeLimit=ScalingTimeLimit)
         # Scale objective vector (is done within quad_equilibration if Q present)
         obj_vector_scaled = col_scaling @ model_data.obj_vector
     else: # Consider Q in the scaling
@@ -911,10 +1275,15 @@ def scale_model(model: gp.Model,
         if method != 'equilibration':
             warnings.warn("Equilibration is the only supported method for quadratic objectives. Using equilibration instead.", 
                         UserWarning)
-        scaled_matrix, scaled_Q_matrix, obj_vector_scaled, row_scaling, col_scaling = quad_equilibration(model_data.constr_matrix, model_data.obj_vector, Q_matrix, cols_to_scale,
+        scaled_matrix, scaled_Q_matrix, obj_vector_scaled, row_scaling, col_scaling, iteration_logs = quad_equilibration(model_data.constr_matrix, model_data.obj_vector, Q_matrix, cols_to_scale,
                                                                 ScalePasses, ScaleRelTol,
-                                                                ScalingLB=ScalingLB, ScalingUB=ScalingUB, n_jobs=ScalingThreads)
-            
+                                                                ScalingLB=ScalingLB, ScalingUB=ScalingUB, ScalingTimeLimit=ScalingTimeLimit)
+    
+    # Print separator before model building phase
+    if ScalingLogToConsole:
+        print("-"*80)
+        print("Building scaled model...")
+    
     # Compute scaled data
     rhs_vector_scaled = row_scaling @ model_data.rhs_vector
     col_diag = col_scaling.diagonal()
@@ -981,11 +1350,11 @@ def scale_model(model: gp.Model,
     # Scale quadratic constraints if present
     if model.isQCP:
         qconstrs = model.getQConstrs()
-        # Process quadratic constraints in parallel
-        qconstr_results = Parallel(n_jobs=ScalingThreads, prefer='threads')(
-            delayed(_scale_single_qconstr)(qconstr, model, col_scaling)
+        # Process quadratic constraints
+        qconstr_results = [
+            _scale_single_qconstr(qconstr, model, col_scaling)
             for qconstr in qconstrs
-        )
+        ]
         
         # Add scaled quadratic constraints to model
         quad_scaling_factors = []
@@ -997,6 +1366,33 @@ def scale_model(model: gp.Model,
         model_scaled.update()
         # Add scaling factors to scaled model
         model_scaled._quad_scaling_factors = quad_scaling_factors
+    
+    # Compute total time and capture final statistics
+    total_time = time.time() - total_start_time
+    final_stats = _capture_model_stats(model_scaled)
+    
+    # Store scaling time as model attribute
+    model_scaled._scaling_time = total_time
+    
+    # Print/write scaling log if requested (only footer with final stats)
+    if ScalingLogToConsole or ScalingLog:
+        # For console: just print the footer since iterations were printed in real-time
+        if ScalingLogToConsole:
+            print("-"*80)
+            print(f"\nScaling completed in {total_time:.6f} seconds")
+            print("\nScaled Model Statistics:")
+            print(final_stats.rstrip())
+            print("-"*80 + "\n")
+        
+        # For file: write complete log
+        if ScalingLog:
+            _print_scaling_log(method, original_stats, ScalePasses, iteration_logs, 
+                              total_time, final_stats, ScalingLog, 0, ScalingTimeLimit, mode='final')
+    
+    # Restore original OutputFlag if we changed it
+    if original_output_flag == 0 and needs_output:
+        model.setParam('OutputFlag', 0)
+    
     return model_scaled
 
 
