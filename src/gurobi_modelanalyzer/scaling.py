@@ -1244,7 +1244,7 @@ def scale_model(model: gp.Model,
     # Compute list of columns to scale (don't scale binary/integer variables)
     cols_to_scale = []
     for i, var_type in enumerate(model_data.var_types):
-        if var_type is not GRB.INTEGER or var_type is not GRB.BINARY:
+        if var_type not in (GRB.INTEGER, GRB.BINARY):
             cols_to_scale.append(i)
     
     # Check if model has quadratic objective terms
