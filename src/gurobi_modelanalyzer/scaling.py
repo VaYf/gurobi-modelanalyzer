@@ -429,6 +429,60 @@ class ScaledModel(gp.Model):
             Diagonal matrix with row scaling factors, or None if not available
         """
         return getattr(self, '_row_scaling', None)
+    
+    def ComputeUnscObj(self, original_model):
+        """
+        Compute the unscaled objective value using original model coefficients
+        and unscaled variable values.
+        
+        This method should be called after optimization to get the objective
+        value in the original (unscaled) space.
+        
+        Parameters:
+        -----------
+        original_model : gp.Model
+            The original unscaled model with same structure as this scaled model
+        """
+        # Store reference to original model if not already set
+        self._original_model = original_model
+        
+        # Get unscaled solution values
+        unscaled_vars = self.getVarsUnscaled()
+        unscaled_values = np.array([var.Xunsc for var in unscaled_vars])
+        
+        # Get original objective coefficients
+        orig_obj = np.array(original_model.getAttr("Obj"))
+        
+        # Compute linear objective contribution
+        linear_obj = np.dot(orig_obj, unscaled_values)
+        
+        # Check for quadratic objective
+        Q_matrix = original_model.getQ()
+        if Q_matrix.nnz > 0:
+            # Quadratic contribution: x^T Q x
+            # Q is upper triangular, need full symmetric form
+            Q_full = Q_matrix + Q_matrix.T - scipy.sparse.diags(Q_matrix.diagonal())
+            quad_obj = float(unscaled_values @ Q_full @ unscaled_values)
+        else:
+            quad_obj = 0.0
+        
+        self._unsc_obj_val = linear_obj + quad_obj
+    
+    @property
+    def UnscObjVal(self):
+        """
+        Get the unscaled objective value.
+        
+        This is the objective value computed using original model coefficients
+        and unscaled variable values.
+        
+        Returns:
+        --------
+        float
+            Unscaled objective value, or None if not computed.
+            Call ComputeUnscObj(original_model) first.
+        """
+        return getattr(self, '_unsc_obj_val', None)
 
 
 class ModelData:
@@ -1191,8 +1245,8 @@ def scale_model(model: gp.Model,
     method : str
         Scaling method to use. Options:
         - 'equilibration': Mean-based equilibration (works for LP, QP, QCP)
-        - 'geometric_mean': Geometric mean scaling (LP only)
-        - 'arithmetic_mean': Arithmetic mean scaling (LP only)
+        - 'geometric_mean': Geometric mean scaling (LP, QCP; not QP)
+        - 'arithmetic_mean': Arithmetic mean scaling (LP, QCP; not QP)
     ScalePasses : int, optional
         Maximum number of scaling iterations (default: 5)
     ScaleRelTol : float, optional
@@ -1219,7 +1273,8 @@ def scale_model(model: gp.Model,
         
     Notes:
     ------
-    - For models with quadratic objectives or constraints, only 'equilibration' method is supported
+    - For models with quadratic objectives, only 'equilibration' method is supported
+    - For models with quadratic constraints (but no quadratic objective), all methods work
     - Integer and binary variables are not scaled (only continuous variables)
     - The scaled model includes scaling matrices stored as _col_scaling and _row_scaling attributes
     """
