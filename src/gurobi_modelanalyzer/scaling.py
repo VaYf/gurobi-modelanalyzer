@@ -43,6 +43,24 @@ def _capture_model_stats(model: gp.Model) -> str:
     return output
 
 
+def _extract_range_stats(stats: str) -> str:
+    """
+    Extract only range-related lines from model statistics.
+    
+    Parameters:
+    -----------
+    stats : str
+        Full model statistics string from printStats()
+        
+    Returns:
+    --------
+    str
+        Only the lines containing range information
+    """
+    range_lines = [line for line in stats.split('\n') if 'range' in line.lower()]
+    return '\n'.join(range_lines)
+
+
 def _print_scaling_log(method: str, original_stats: str, scale_passes: int, 
                        iteration_logs: List[Dict], total_time: float, 
                        final_stats: str, log_file: str = "", log_to_console: int = 1,
@@ -137,8 +155,8 @@ def _print_scaling_log(method: str, original_stats: str, scale_passes: int,
     
     # Final results
     log_lines.append(f"\nScaling completed in {total_time:.6f} seconds")
-    log_lines.append("\nScaled Model Statistics:")
-    log_lines.append(final_stats.rstrip())
+    log_lines.append("\nScaled Model Ranges:")
+    log_lines.append(_extract_range_stats(final_stats))
     log_lines.append("-"*80 + "\n")
     
     # Combine all lines
@@ -659,7 +677,7 @@ def _scale_single_qconstr(qconstr: gp.QConstr, model: gp.Model,
     --------
     Tuple containing:
         - Qc_scaled: Scaled quadratic matrix
-        - q_scaled: Scaled linear vector
+        - q_scaled: Scaled linear vector (as flattened numpy array)
         - sense: Constraint sense
         - rhs_scaled: Scaled RHS
         - scaling_factor: Computed scaling factor
@@ -669,6 +687,11 @@ def _scale_single_qconstr(qconstr: gp.QConstr, model: gp.Model,
     Qc, q = model.getQCMatrices(qconstr)
     Qc = col_scaling @ Qc @ col_scaling
     q = col_scaling @ q
+    # Convert q to dense array and flatten (getQCMatrices returns sparse column matrix)
+    if scipy.sparse.issparse(q):
+        q = np.asarray(q.todense()).flatten()
+    else:
+        q = np.asarray(q).flatten()
     rhs = qconstr.QCRHS
     sense = qconstr.QCSense
     name = qconstr.QCName + "_scaled"
@@ -1404,6 +1427,8 @@ def scale_model(model: gp.Model,
         model_scaled.update()
     # Scale quadratic constraints if present
     if model.isQCP:
+        if ScalingLogToConsole:
+            print("Scaling quadratic constraints...")
         qconstrs = model.getQConstrs()
         # Process quadratic constraints
         qconstr_results = [
@@ -1415,7 +1440,7 @@ def scale_model(model: gp.Model,
         quad_scaling_factors = []
         for Qc_scaled, q_scaled, sense, rhs_scaled, scaling_factor, name in qconstr_results:
             model_scaled.addMQConstr(
-                Qc_scaled, q_scaled.toarray().flatten(), sense, rhs_scaled, name=name)
+                Qc_scaled, q_scaled, sense, rhs_scaled, name=name)
             quad_scaling_factors.append(scaling_factor)
         
         model_scaled.update()
@@ -1435,8 +1460,8 @@ def scale_model(model: gp.Model,
         if ScalingLogToConsole:
             print("-"*80)
             print(f"\nScaling completed in {total_time:.6f} seconds")
-            print("\nScaled Model Statistics:")
-            print(final_stats.rstrip())
+            print("\nScaled Model Ranges:")
+            print(_extract_range_stats(final_stats))
             print("-"*80 + "\n")
         
         # For file: write complete log
