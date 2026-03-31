@@ -483,6 +483,15 @@ class TestInitScaling(unittest.TestCase):
         self.model.close()
         self.env.close()
 
+    # ── invalid values ────────────────────────────────────────────────────
+
+    def test_invalid_init_scaling_raises_value_error(self):
+        for bad in (-1, 3, 99):
+            with self.assertRaises(ValueError):
+                scale_model(
+                    self.model, "equilibration",
+                    init_scaling=bad, scaling_log_to_console=0)
+
     # ── mode 0 (default): _init_scaling is ignored ────────────────────────
 
     def test_mode0_ignores_init_scaling_attribute(self):
