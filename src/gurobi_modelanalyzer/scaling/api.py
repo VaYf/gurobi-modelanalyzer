@@ -112,7 +112,8 @@ def scale_model(model: gp.Model,
                 scaling_time_limit: float = float('inf'),
                 scaling_log: str = "",
                 scaling_log_to_console: int = 1,
-                init_scaling: int = 0) -> ScaledModel:
+                init_scaling: int = 0,
+                env: gp.Env = None) -> ScaledModel:
     """
     Scale a Gurobi optimization model to improve numerical conditioning.
 
@@ -161,6 +162,8 @@ def scale_model(model: gp.Model,
           the matrices, then run the iterative algorithm on top.
           The final scaling stored in the model is the product of the
           user-provided initial scaling and the algorithm scaling.
+    env : gp.Env, optional
+        Gurobi environment to use for the scaled model.
 
     Returns:
     --------
@@ -193,6 +196,10 @@ def scale_model(model: gp.Model,
     - The scaled model includes scaling matrices stored as
       _col_scaling and _row_scaling attributes
     """
+    if init_scaling not in (0, 1, 2):
+        raise ValueError(
+            f"init_scaling must be 0, 1, or 2 (got {init_scaling!r}).")
+
     # Start timing
     total_start_time = time.time()
 
@@ -370,7 +377,7 @@ def scale_model(model: gp.Model,
             scaled_q_matrix, value_threshold)
 
     # Create linear terms of ScaledModel with scaled data using matrix API
-    model_scaled = ScaledModel(model.ModelName + "_scaled")
+    model_scaled = ScaledModel(model.ModelName + "_scaled", env=env)
 
     # Add variables with scaled bounds and objective
     vars_list = []
