@@ -329,7 +329,7 @@ class ScaledModel(gp.Model):
             # q is upper triangular, need full symmetric form
             q_full = q_matrix + q_matrix.T - \
                 scipy.sparse.diags(q_matrix.diagonal())
-            quad_obj = float(unscaled_values @ q_full @ unscaled_values)
+            quad_obj = float(np.asarray(unscaled_values @ q_full @ unscaled_values).flat[0])
         else:
             quad_obj = 0.0
 
