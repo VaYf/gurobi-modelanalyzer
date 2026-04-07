@@ -885,7 +885,7 @@ def _compute_constraint_violations(
             # Compute LHS: x^T q x + c^T x
             # q is upper triangular, so we need to account for symmetry
             q_full = q + q.T - np.diag(q.diagonal())  # Make q symmetric
-            lhs_value = float(x.T @ q_full @ x + c.T @ x)
+            lhs_value = float(np.asarray(x.T @ q_full @ x + c.T @ x).flat[0])
 
             constraint_violations[name] = _compute_violation(
                 sense, lhs_value, rhs)

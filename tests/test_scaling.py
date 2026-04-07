@@ -672,5 +672,78 @@ class TestInitScalingQCP(unittest.TestCase):
         ms.close()
 
 
+# ── MIQCP: ComputeUnscVio and ComputeUnscObj do not raise TypeError ───────
+
+def _tiny_miqcp(env):
+    """
+    A small MIQCP: integer variable, quadratic constraint, quadratic objective.
+
+      min   x^2 + y^2 + z^2
+      s.t.  x^2 + y^2 <= 4
+            x + y + z >= 1
+            x, y >= 0  (continuous)
+            z in {0, 1} (binary)
+    """
+    m = gp.Model(env=env)
+    x = m.addVar(lb=0, name="x")
+    y = m.addVar(lb=0, name="y")
+    z = m.addVar(vtype=GRB.BINARY, name="z")
+    m.addQConstr(x * x + y * y <= 4, name="qc1")
+    m.addConstr(x + y + z >= 1, name="c1")
+    m.setObjective(x * x + y * y + z * z, GRB.MINIMIZE)
+    m.update()
+    return m
+
+
+class TestMIQCPScaling(unittest.TestCase):
+    """
+    Regression tests for TypeError when float() is called on a numpy matrix
+    returned by sparse @ dense quadratic expressions in ComputeUnscVio and
+    ComputeUnscObj.
+    """
+
+    def setUp(self):
+        self.env = _make_env()
+        self.model = _tiny_miqcp(self.env)
+
+    def tearDown(self):
+        self.model.close()
+        self.env.close()
+
+    def test_compute_unsc_vio_does_not_raise(self):
+        """ComputeUnscVio must not raise TypeError on a solved MIQCP."""
+        ms = scale_model(self.model, "equilibration", scaling_log_to_console=0)
+        ms.setParam("OutputFlag", 0)
+        ms.optimize()
+        self.assertEqual(ms.Status, GRB.OPTIMAL)
+        # Must not raise: "only 0-dimensional arrays can be converted to
+        # Python scalars"
+        ms.ComputeUnscVio(self.model)
+        self.assertIsNotNone(ms.MaxUnscVio)
+        self.assertIsInstance(ms.MaxUnscVio, float)
+        ms.close()
+
+    def test_compute_unsc_vio_value_is_near_zero(self):
+        """Unscaled violations must be negligible at an optimal solution."""
+        ms = scale_model(self.model, "equilibration", scaling_log_to_console=0)
+        ms.setParam("OutputFlag", 0)
+        ms.optimize()
+        self.assertEqual(ms.Status, GRB.OPTIMAL)
+        ms.ComputeUnscVio(self.model)
+        self.assertLess(ms.MaxUnscVio, 1e-4)
+        ms.close()
+
+    def test_compute_unsc_obj_does_not_raise(self):
+        """ComputeUnscObj must not raise TypeError on a solved MIQCP."""
+        ms = scale_model(self.model, "equilibration", scaling_log_to_console=0)
+        ms.setParam("OutputFlag", 0)
+        ms.optimize()
+        self.assertEqual(ms.Status, GRB.OPTIMAL)
+        ms.ComputeUnscObj(self.model)
+        self.assertIsNotNone(ms.UnscObjVal)
+        self.assertIsInstance(ms.UnscObjVal, float)
+        ms.close()
+
+
 if __name__ == "__main__":
     unittest.main()
