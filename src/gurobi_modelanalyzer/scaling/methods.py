@@ -167,7 +167,9 @@ class ModelData:
 
 def _row_scale_factor(row_data: np.ndarray, method: str) -> float:
     """Compute a row scaling factor for the given method."""
-    if method in ("equilibration", "arithmetic_mean"):
+    if method == "equilibration":
+        return 1.0 / np.max(row_data)
+    elif method == "arithmetic_mean":
         return 1.0 / np.mean(row_data)
     else:  # geometric_mean
         return 1.0 / np.sqrt(np.min(row_data) * np.max(row_data))
