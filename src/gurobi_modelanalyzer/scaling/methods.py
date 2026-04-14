@@ -87,9 +87,9 @@ def _print_scaling_log(
             rel_change = log.get("rel_change", 0.0)
             iter_time = log.get("time", 0.0)
             if isinstance(rel_change, float):
-                logger.info(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.6f}")
+                logger.info(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.2f}")
             else:
-                logger.info(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.6f}")
+                logger.info(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.2f}")
         return
 
     # mode == 'final': emit complete log as a single block
@@ -109,11 +109,11 @@ def _print_scaling_log(
         rel_change = log.get("rel_change", 0.0)
         iter_time = log.get("time", 0.0)
         if isinstance(rel_change, float):
-            log_lines.append(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.6f}")
+            log_lines.append(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.2f}")
         else:
-            log_lines.append(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.6f}")
+            log_lines.append(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.2f}")
     log_lines.append("-" * 80)
-    log_lines.append(f"\nScaling completed in {total_time:.6f} seconds")
+    log_lines.append(f"\nScaling completed in {total_time:.2f} seconds")
     log_lines.append("\nScaled Model Ranges:")
     log_lines.append(_extract_range_stats(final_stats))
     log_lines.append("-" * 80 + "\n")
@@ -290,7 +290,7 @@ def _iterative_scaling(
             {
                 "pass": completed_scale_passes + 1,
                 "rel_change": rel_change,
-                "time": iter_time,
+                "time": total_elapsed_time,
             }
         )
         _print_scaling_log("", "", 0, iteration_logs, 0.0, "", mode="iteration")
@@ -768,7 +768,7 @@ def quad_equilibration(
             {
                 "pass": completed_scale_passes + 1,
                 "rel_change": rel_change,
-                "time": iter_time,
+                "time": total_elapsed_time,
             }
         )
 

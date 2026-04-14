@@ -489,7 +489,7 @@ def scale_model(
 
     # Emit scaling footer with final stats
     logger.info("-" * 80)
-    logger.info(f"\nScaling completed in {total_time:.6f} seconds")
+    logger.info(f"\nScaling completed in {total_time:.2f} seconds")
     logger.info("\nScaled Model Ranges:")
     logger.info(_extract_range_stats(final_stats))
     logger.info("-" * 80 + "\n")
