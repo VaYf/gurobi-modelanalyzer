@@ -30,7 +30,6 @@ dependencies = [
   "gurobipy",
   "numpy",
   "scipy",
-  "joblib",
 ]
 
 [project.urls]
