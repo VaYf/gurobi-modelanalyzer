@@ -8,7 +8,7 @@
 
 
 project = "Gurobi Model Analyzer"
-copyright = "2024, Gurobi Optimization"
+copyright = "Gurobi Optimization"
 author = "Gurobi Optimization"
 html_title = "Gurobi Model Analyzer"
 
@@ -19,7 +19,7 @@ html_theme_options = {
     "construction_warning": False,
 }
 
-html_favicon = "https://www.gurobi.com/favicon.ico"
+html_favicon = "https://docs.gurobi.com/current/_static/favicon.ico"
 
 # -- Warning banner while in beta -------------------------------------------
 # rst_prolog = """.. warning::
