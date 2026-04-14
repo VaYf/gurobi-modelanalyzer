@@ -18,13 +18,13 @@ API Reference
    :param method: Scaling method to use. One of:
 
                   ``'equilibration'``: iteratively scales rows and columns by their mean
-                  absolute value. Supports LP, QP, and QCP models.
+                  absolute value. Supports (MI)LP, (MI)QP, and (MI)QCP models.
 
                   ``'geometric_mean'``: scales rows and columns by the geometric mean
-                  of their coefficient ranges. Supports LP and QCP models.
+                  of their coefficient ranges. Supports (MI)LP and (MI)QCP models.
 
                   ``'arithmetic_mean'``: scales rows and columns by the arithmetic
-                  mean of their absolute values. Supports LP and QCP models.
+                  mean of their absolute values. Supports (MI)LP and (MI)QCP models.
 
    :param scale_passes: Maximum number of scaling iterations. Default: 5.
    :param scale_rel_tol: Relative convergence tolerance. Scaling stops early
