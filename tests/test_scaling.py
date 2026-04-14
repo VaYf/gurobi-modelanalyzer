@@ -26,6 +26,7 @@ cwd = pathlib.Path(os.getcwd())
 
 # ── Shared helpers ────────────────────────────────────────────────────────
 
+
 def _make_env():
     """Return a silent Gurobi environment."""
     env = gp.Env()
@@ -69,6 +70,7 @@ def _tiny_qp(env):
 
 
 # ── scale_model API ───────────────────────────────────────────────────────
+
 
 class TestScaleModelAPI(unittest.TestCase):
     """Tests for the scale_model() public API on a real LP."""
@@ -145,7 +147,8 @@ class TestScaleModelAPI(unittest.TestCase):
         log_path = cwd / "test_scaling_output.log"
         try:
             ms = scale_model(
-                self.model, "equilibration",
+                self.model,
+                "equilibration",
                 scaling_log=str(log_path),
                 scaling_log_to_console=0,
             )
@@ -158,6 +161,7 @@ class TestScaleModelAPI(unittest.TestCase):
 
 
 # ── post-solve unscaling ──────────────────────────────────────────────────
+
 
 class TestScaleModelSolve(unittest.TestCase):
     """Solve the scaled model and verify the unscaled solution is feasible."""
@@ -198,6 +202,7 @@ class TestScaleModelSolve(unittest.TestCase):
 
 # ── _scale = 0 opt-out ────────────────────────────────────────────────────
 
+
 class TestScaleOptOut(unittest.TestCase):
     """Verify that _scale=0 excludes variables/constraints from scaling."""
 
@@ -227,6 +232,7 @@ class TestScaleOptOut(unittest.TestCase):
 
 
 # ── internal functions ────────────────────────────────────────────────────
+
 
 class TestInternalFunctions(unittest.TestCase):
     """Unit tests for internal helpers in methods.py."""
@@ -262,8 +268,8 @@ class TestInternalFunctions(unittest.TestCase):
         env = _make_env()
         m = gp.Model(env=env)
         x = m.addVar(lb=0, ub=10, name="x")
-        m.addConstr(x >= 5, name="c_ge")   # violated when x=0
-        m.addConstr(x <= 3, name="c_le")   # not violated when x=0
+        m.addConstr(x >= 5, name="c_ge")  # violated when x=0
+        m.addConstr(x <= 3, name="c_le")  # not violated when x=0
         m.setObjective(x, GRB.MINIMIZE)
         m.update()
 
@@ -326,6 +332,7 @@ def _tiny_qcp(env):
 
 # ── QP scaling ────────────────────────────────────────────────────────────
 
+
 class TestQPScaling(unittest.TestCase):
     """Tests for models with a quadratic objective."""
 
@@ -339,9 +346,7 @@ class TestQPScaling(unittest.TestCase):
 
     def test_non_equilibration_method_raises_warning(self):
         with self.assertWarns(UserWarning):
-            ms = scale_model(
-                self.model, "geometric_mean", scaling_log_to_console=0
-            )
+            ms = scale_model(self.model, "geometric_mean", scaling_log_to_console=0)
             ms.close()
 
     def test_equilibration_returns_scaled_model(self):
@@ -358,6 +363,7 @@ class TestQPScaling(unittest.TestCase):
 
 
 # ── QCP scaling ───────────────────────────────────────────────────────────
+
 
 class TestQCPScaling(unittest.TestCase):
     """Tests for models with quadratic *constraints* (no quadratic objective)."""
@@ -468,6 +474,7 @@ class TestQCPScaling(unittest.TestCase):
 
 # ── init_scaling feature ──────────────────────────────────────────────────
 
+
 class TestInitScaling(unittest.TestCase):
     """
     Tests for init_scaling=1 (user-provided only) and
@@ -489,19 +496,21 @@ class TestInitScaling(unittest.TestCase):
         for bad in (-1, 3, 99):
             with self.assertRaises(ValueError):
                 scale_model(
-                    self.model, "equilibration",
-                    init_scaling=bad, scaling_log_to_console=0)
+                    self.model,
+                    "equilibration",
+                    init_scaling=bad,
+                    scaling_log_to_console=0,
+                )
 
     # ── mode 0 (default): _init_scaling is ignored ────────────────────────
 
     def test_mode0_ignores_init_scaling_attribute(self):
         """With init_scaling=0, _init_scaling attributes have no effect."""
         self.model.getVars()[0]._init_scaling = 42.0
-        ms_plain = scale_model(
-            self.model, "equilibration", scaling_log_to_console=0)
+        ms_plain = scale_model(self.model, "equilibration", scaling_log_to_console=0)
         ms_attr = scale_model(
-            self.model, "equilibration",
-            init_scaling=0, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=0, scaling_log_to_console=0
+        )
         col0_plain = ms_plain.ColScaling.diagonal()[0]
         col0_attr = ms_attr.ColScaling.diagonal()[0]
         self.assertAlmostEqual(col0_plain, col0_attr, places=10)
@@ -516,8 +525,8 @@ class TestInitScaling(unittest.TestCase):
         for v in self.model.getVars():
             v._init_scaling = USER_FACTOR
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=1, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=1, scaling_log_to_console=0
+        )
         for factor in ms.ColScaling.diagonal():
             self.assertAlmostEqual(factor, USER_FACTOR, places=10)
         ms.close()
@@ -528,8 +537,8 @@ class TestInitScaling(unittest.TestCase):
         for c in self.model.getConstrs():
             c._init_scaling = USER_FACTOR
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=1, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=1, scaling_log_to_console=0
+        )
         for factor in ms.RowScaling.diagonal():
             self.assertAlmostEqual(factor, USER_FACTOR, places=10)
         ms.close()
@@ -538,8 +547,8 @@ class TestInitScaling(unittest.TestCase):
         """Variables without _init_scaling set should keep factor 1.0."""
         self.model.getVars()[0]._init_scaling = 5.0
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=1, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=1, scaling_log_to_console=0
+        )
         col_diag = ms.ColScaling.diagonal()
         self.assertAlmostEqual(col_diag[0], 5.0, places=10)
         self.assertAlmostEqual(col_diag[1], 1.0, places=10)
@@ -552,8 +561,8 @@ class TestInitScaling(unittest.TestCase):
         v._scale = 0
         v._init_scaling = USER_FACTOR
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=1, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=1, scaling_log_to_console=0
+        )
         self.assertAlmostEqual(ms.ColScaling.diagonal()[0], USER_FACTOR, places=10)
         ms.close()
 
@@ -561,8 +570,8 @@ class TestInitScaling(unittest.TestCase):
         for v in self.model.getVars():
             v._init_scaling = 10.0
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=1, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=1, scaling_log_to_console=0
+        )
         ms.setParam("OutputFlag", 0)
         ms.optimize()
         self.assertEqual(ms.Status, GRB.OPTIMAL)
@@ -575,14 +584,13 @@ class TestInitScaling(unittest.TestCase):
         for v in self.model.getVars():
             v._init_scaling = 10.0
         ms0 = scale_model(
-            self.model, "equilibration",
-            init_scaling=0, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=0, scaling_log_to_console=0
+        )
         ms2 = scale_model(
-            self.model, "equilibration",
-            init_scaling=2, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=2, scaling_log_to_console=0
+        )
         # At least one column factor should differ
-        differ = not np.allclose(
-            ms0.ColScaling.diagonal(), ms2.ColScaling.diagonal())
+        differ = not np.allclose(ms0.ColScaling.diagonal(), ms2.ColScaling.diagonal())
         self.assertTrue(differ)
         ms0.close()
         ms2.close()
@@ -597,8 +605,8 @@ class TestInitScaling(unittest.TestCase):
         v._scale = 0
         v._init_scaling = USER_FACTOR
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=2, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=2, scaling_log_to_console=0
+        )
         self.assertAlmostEqual(ms.ColScaling.diagonal()[0], USER_FACTOR, places=10)
         ms.close()
 
@@ -606,8 +614,8 @@ class TestInitScaling(unittest.TestCase):
         for v in self.model.getVars():
             v._init_scaling = 2.0
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=2, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=2, scaling_log_to_console=0
+        )
         ms.setParam("OutputFlag", 0)
         ms.optimize()
         self.assertEqual(ms.Status, GRB.OPTIMAL)
@@ -617,8 +625,8 @@ class TestInitScaling(unittest.TestCase):
         for v in self.model.getVars():
             v._init_scaling = 2.0
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=2, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=2, scaling_log_to_console=0
+        )
         ms.setParam("OutputFlag", 0)
         ms.optimize()
         ms.ComputeUnscVio(self.model)
@@ -642,8 +650,8 @@ class TestInitScalingQCP(unittest.TestCase):
         USER_FACTOR = 0.25
         self.model.getQConstrs()[0]._init_scaling = USER_FACTOR
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=1, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=1, scaling_log_to_console=0
+        )
         self.assertAlmostEqual(ms._quad_scaling_factors[0], USER_FACTOR, places=10)
         ms.close()
 
@@ -654,8 +662,8 @@ class TestInitScalingQCP(unittest.TestCase):
         qc._scale = 0
         qc._init_scaling = USER_FACTOR
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=1, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=1, scaling_log_to_console=0
+        )
         self.assertAlmostEqual(ms._quad_scaling_factors[0], USER_FACTOR, places=10)
         ms.close()
 
@@ -666,13 +674,14 @@ class TestInitScalingQCP(unittest.TestCase):
         qc._scale = 0
         qc._init_scaling = USER_FACTOR
         ms = scale_model(
-            self.model, "equilibration",
-            init_scaling=2, scaling_log_to_console=0)
+            self.model, "equilibration", init_scaling=2, scaling_log_to_console=0
+        )
         self.assertAlmostEqual(ms._quad_scaling_factors[0], USER_FACTOR, places=10)
         ms.close()
 
 
 # ── MIQCP: ComputeUnscVio and ComputeUnscObj do not raise TypeError ───────
+
 
 def _tiny_miqcp(env):
     """

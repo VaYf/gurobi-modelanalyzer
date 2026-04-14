@@ -24,13 +24,14 @@ from .methods import (
 )
 from .scaled_wrappers import ScaledModel
 
-logger = logging.getLogger('gurobi_modelanalyzer.scaling')
+logger = logging.getLogger("gurobi_modelanalyzer.scaling")
 logger.setLevel(logging.DEBUG)
 logger.propagate = False
 
+
 def _build_init_scaling_matrices(
-        gurobi_vars: List[gp.Var],
-        gurobi_constrs: List[gp.Constr],
+    gurobi_vars: List[gp.Var],
+    gurobi_constrs: List[gp.Constr],
 ) -> Tuple[scipy.sparse.dia_matrix, scipy.sparse.dia_matrix]:
     """
     Build diagonal initial scaling matrices from ``_init_scaling``
@@ -38,18 +39,18 @@ def _build_init_scaling_matrices(
 
     Entries without ``_init_scaling`` default to 1.0 (no effect).
     """
-    col_factors = np.array([
-        float(getattr(v, '_init_scaling', 1.0)) for v in gurobi_vars
-    ])
-    row_factors = np.array([
-        float(getattr(c, '_init_scaling', 1.0)) for c in gurobi_constrs
-    ])
+    col_factors = np.array(
+        [float(getattr(v, "_init_scaling", 1.0)) for v in gurobi_vars]
+    )
+    row_factors = np.array(
+        [float(getattr(c, "_init_scaling", 1.0)) for c in gurobi_constrs]
+    )
     return scipy.sparse.diags(col_factors), scipy.sparse.diags(row_factors)
 
 
 def _qconstr_row_scale_override(
-        qconstr: gp.QConstr,
-        init_scaling: int,
+    qconstr: gp.QConstr,
+    init_scaling: int,
 ) -> float:
     """
     Return the row_scale_override value for a quadratic constraint, or
@@ -62,12 +63,12 @@ def _qconstr_row_scale_override(
       row factor (the variable is excluded from further row scaling).
     - All other cases: return None (norm-based or skip_row_scale applies).
     """
-    init_val = getattr(qconstr, '_init_scaling', None)
+    init_val = getattr(qconstr, "_init_scaling", None)
     if init_val is None:
         return None
     if init_scaling == 1:
         return float(init_val)
-    if init_scaling == 2 and getattr(qconstr, '_scale', 1) == 0:
+    if init_scaling == 2 and getattr(qconstr, "_scale", 1) == 0:
         return float(init_val)
     return None
 
@@ -102,18 +103,20 @@ def _capture_model_stats(model: gp.Model) -> str:
     return output
 
 
-def scale_model(model: gp.Model,
-                method: str,
-                scale_passes: int = 5,
-                scale_rel_tol: float = 1e-4,
-                scaling_lb: float = 1e-8,
-                scaling_ub: float = 1e8,
-                value_threshold: float = 1e-13,
-                scaling_time_limit: float = float('inf'),
-                scaling_log: str = "",
-                scaling_log_to_console: int = 1,
-                init_scaling: int = 0,
-                env: gp.Env = None) -> ScaledModel:
+def scale_model(
+    model: gp.Model,
+    method: str,
+    scale_passes: int = 5,
+    scale_rel_tol: float = 1e-4,
+    scaling_lb: float = 1e-8,
+    scaling_ub: float = 1e8,
+    value_threshold: float = 1e-13,
+    scaling_time_limit: float = float("inf"),
+    scaling_log: str = "",
+    scaling_log_to_console: int = 1,
+    init_scaling: int = 0,
+    env: gp.Env = None,
+) -> ScaledModel:
     """
     Scale a Gurobi optimization model to improve numerical conditioning.
 
@@ -197,8 +200,7 @@ def scale_model(model: gp.Model,
       _col_scaling and _row_scaling attributes
     """
     if init_scaling not in (0, 1, 2):
-        raise ValueError(
-            f"init_scaling must be 0, 1, or 2 (got {init_scaling!r}).")
+        raise ValueError(f"init_scaling must be 0, 1, or 2 (got {init_scaling!r}).")
 
     # Start timing
     total_start_time = time.time()
@@ -210,18 +212,18 @@ def scale_model(model: gp.Model,
     original_output_flag = model.Params.OutputFlag
     needs_output = scaling_log_to_console or scaling_log
     if original_output_flag == 0 and needs_output:
-        model.setParam('OutputFlag', 1)
+        model.setParam("OutputFlag", 1)
 
     # Configure logging handlers for this scaling call
     _log_handlers: List[logging.Handler] = []
     if scaling_log_to_console:
         _console_handler = logging.StreamHandler()
-        _console_handler.setFormatter(logging.Formatter('%(message)s'))
+        _console_handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(_console_handler)
         _log_handlers.append(_console_handler)
     if scaling_log:
-        _file_handler = logging.FileHandler(scaling_log, mode='w')
-        _file_handler.setFormatter(logging.Formatter('%(message)s'))
+        _file_handler = logging.FileHandler(scaling_log, mode="w")
+        _file_handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(_file_handler)
         _log_handlers.append(_file_handler)
 
@@ -238,20 +240,22 @@ def scale_model(model: gp.Model,
     for i, var_type in enumerate(model_data.var_types):
         if var_type in (GRB.INTEGER, GRB.BINARY):
             continue
-        if getattr(gurobi_vars[i], '_scale', 1) == 0:
+        if getattr(gurobi_vars[i], "_scale", 1) == 0:
             continue
         cols_to_scale.append(i)
 
     # Compute rows to scale: skip any constraint marked with _scale=0.
     rows_to_scale = [
-        i for i, constr in enumerate(model.getConstrs())
-        if getattr(constr, '_scale', 1) != 0
+        i
+        for i, constr in enumerate(model.getConstrs())
+        if getattr(constr, "_scale", 1) != 0
     ]
 
     # Build initial scaling matrices from _init_scaling attributes when needed.
     if init_scaling > 0:
         col_init_scaling, row_init_scaling = _build_init_scaling_matrices(
-            gurobi_vars, model.getConstrs())
+            gurobi_vars, model.getConstrs()
+        )
     else:
         col_init_scaling = row_init_scaling = None
 
@@ -269,7 +273,8 @@ def scale_model(model: gp.Model,
         0.0,
         "",
         scaling_time_limit,
-        mode='header')
+        mode="header",
+    )
 
     if init_scaling == 1:
         # ── Mode 1: apply user-provided scaling only, skip the algorithm ──
@@ -286,12 +291,10 @@ def scale_model(model: gp.Model,
         # the algorithm continues from that starting point.
         if init_scaling == 2:
             constr_matrix_in = (
-                row_init_scaling
-                @ model_data.constr_matrix
-                @ col_init_scaling)
+                row_init_scaling @ model_data.constr_matrix @ col_init_scaling
+            )
             if q_matrix.nnz > 0:
-                q_matrix_in = (
-                    col_init_scaling @ q_matrix @ col_init_scaling)
+                q_matrix_in = col_init_scaling @ q_matrix @ col_init_scaling
                 obj_vector_in = col_init_scaling @ model_data.obj_vector
             else:
                 q_matrix_in = q_matrix
@@ -302,43 +305,70 @@ def scale_model(model: gp.Model,
             obj_vector_in = model_data.obj_vector
 
         if q_matrix.nnz == 0:  # LP / QCP: no quadratic objective
-            if method == 'equilibration':
-                (scaled_matrix, row_scaling, col_scaling,
-                 iteration_logs) = equilibration(
-                    constr_matrix_in, cols_to_scale,
-                    rows_to_scale, scale_passes, scale_rel_tol,
-                    scaling_time_limit=scaling_time_limit)
-            elif method == 'geometric_mean':
-                (scaled_matrix, row_scaling, col_scaling,
-                 iteration_logs) = geometric_mean(
-                    constr_matrix_in, cols_to_scale,
-                    rows_to_scale, scale_passes, scale_rel_tol,
-                    scaling_time_limit=scaling_time_limit)
-            elif method == 'arithmetic_mean':
-                (scaled_matrix, row_scaling, col_scaling,
-                 iteration_logs) = arithmetic_mean(
-                    constr_matrix_in, cols_to_scale,
-                    rows_to_scale, scale_passes, scale_rel_tol,
-                    scaling_time_limit=scaling_time_limit)
+            if method == "equilibration":
+                (scaled_matrix, row_scaling, col_scaling, iteration_logs) = (
+                    equilibration(
+                        constr_matrix_in,
+                        cols_to_scale,
+                        rows_to_scale,
+                        scale_passes,
+                        scale_rel_tol,
+                        scaling_time_limit=scaling_time_limit,
+                    )
+                )
+            elif method == "geometric_mean":
+                (scaled_matrix, row_scaling, col_scaling, iteration_logs) = (
+                    geometric_mean(
+                        constr_matrix_in,
+                        cols_to_scale,
+                        rows_to_scale,
+                        scale_passes,
+                        scale_rel_tol,
+                        scaling_time_limit=scaling_time_limit,
+                    )
+                )
+            elif method == "arithmetic_mean":
+                (scaled_matrix, row_scaling, col_scaling, iteration_logs) = (
+                    arithmetic_mean(
+                        constr_matrix_in,
+                        cols_to_scale,
+                        rows_to_scale,
+                        scale_passes,
+                        scale_rel_tol,
+                        scaling_time_limit=scaling_time_limit,
+                    )
+                )
             # Accumulate initial factors into the total for mode 2
             if init_scaling == 2:
                 col_scaling = col_init_scaling @ col_scaling
                 row_scaling = row_scaling @ row_init_scaling
             obj_vector_scaled = col_scaling @ model_data.obj_vector
         else:  # QP: quadratic objective
-            if method != 'equilibration':
+            if method != "equilibration":
                 warnings.warn(
                     "Equilibration is the only supported method for "
                     "quadratic objectives. Using equilibration instead.",
-                    UserWarning)
-            (scaled_matrix, scaled_q_matrix, obj_vector_scaled,
-             row_scaling, col_scaling,
-             iteration_logs) = quad_equilibration(
-                constr_matrix_in, obj_vector_in,
-                q_matrix_in, cols_to_scale, rows_to_scale,
-                scale_passes, scale_rel_tol,
-                scaling_lb=scaling_lb, scaling_ub=scaling_ub,
-                scaling_time_limit=scaling_time_limit)
+                    UserWarning,
+                )
+            (
+                scaled_matrix,
+                scaled_q_matrix,
+                obj_vector_scaled,
+                row_scaling,
+                col_scaling,
+                iteration_logs,
+            ) = quad_equilibration(
+                constr_matrix_in,
+                obj_vector_in,
+                q_matrix_in,
+                cols_to_scale,
+                rows_to_scale,
+                scale_passes,
+                scale_rel_tol,
+                scaling_lb=scaling_lb,
+                scaling_ub=scaling_ub,
+                scaling_time_limit=scaling_time_limit,
+            )
             # Accumulate initial factors into the total for mode 2
             if init_scaling == 2:
                 col_scaling = col_init_scaling @ col_scaling
@@ -358,23 +388,22 @@ def scale_model(model: gp.Model,
     lb_vector_scaled = col_scaling_inv @ model_data.lb_vector
     ub_vector_scaled = col_scaling_inv @ model_data.ub_vector
     var_names_scaled = [name + "_scaled" for name in model_data.var_names]
-    constr_names_scaled = [
-        name + "_scaled" for name in model_data.constr_names]
+    constr_names_scaled = [name + "_scaled" for name in model_data.constr_names]
 
     # Clean small coefficients
-    scaled_matrix = _threshold_small_coefficients(
-        scaled_matrix, value_threshold)
+    scaled_matrix = _threshold_small_coefficients(scaled_matrix, value_threshold)
     rhs_vector_scaled = _threshold_small_coefficients(
-        rhs_vector_scaled, value_threshold)
+        rhs_vector_scaled, value_threshold
+    )
     obj_vector_scaled = _threshold_small_coefficients(
-        obj_vector_scaled, value_threshold)
-    lb_vector_scaled = _threshold_small_coefficients(
-        lb_vector_scaled, value_threshold)
-    ub_vector_scaled = _threshold_small_coefficients(
-        ub_vector_scaled, value_threshold)
+        obj_vector_scaled, value_threshold
+    )
+    lb_vector_scaled = _threshold_small_coefficients(lb_vector_scaled, value_threshold)
+    ub_vector_scaled = _threshold_small_coefficients(ub_vector_scaled, value_threshold)
     if q_matrix.nnz > 0:
         scaled_q_matrix = _threshold_small_coefficients(
-            scaled_q_matrix, value_threshold)
+            scaled_q_matrix, value_threshold
+        )
 
     # Create linear terms of ScaledModel with scaled data using matrix API
     model_scaled = ScaledModel(model.ModelName + "_scaled", env=env)
@@ -387,7 +416,7 @@ def scale_model(model: gp.Model,
             ub=ub_vector_scaled[i],
             obj=obj_vector_scaled[i],
             vtype=model_data.var_types[i],
-            name=var_names_scaled[i]
+            name=var_names_scaled[i],
         )
         vars_list.append(var)
 
@@ -401,7 +430,7 @@ def scale_model(model: gp.Model,
         vars_list,
         model_data.constr_sense,
         rhs_vector_scaled,
-        constr_names_scaled
+        constr_names_scaled,
     )
 
     model_scaled.update()
@@ -425,19 +454,26 @@ def scale_model(model: gp.Model,
         # Process quadratic constraints
         qconstr_results = [
             _scale_single_qconstr(
-                qconstr, model, col_scaling,
-                skip_row_scale=(getattr(qconstr, '_scale', 1) == 0),
-                row_scale_override=_qconstr_row_scale_override(
-                    qconstr, init_scaling))
+                qconstr,
+                model,
+                col_scaling,
+                skip_row_scale=(getattr(qconstr, "_scale", 1) == 0),
+                row_scale_override=_qconstr_row_scale_override(qconstr, init_scaling),
+            )
             for qconstr in qconstrs
         ]
 
         # Add scaled quadratic constraints to model
         quad_scaling_factors = []
-        for (qc_scaled, q_scaled, sense,
-             rhs_scaled, scaling_factor, name) in qconstr_results:
-            model_scaled.addMQConstr(
-                qc_scaled, q_scaled, sense, rhs_scaled, name=name)
+        for (
+            qc_scaled,
+            q_scaled,
+            sense,
+            rhs_scaled,
+            scaling_factor,
+            name,
+        ) in qconstr_results:
+            model_scaled.addMQConstr(qc_scaled, q_scaled, sense, rhs_scaled, name=name)
             quad_scaling_factors.append(scaling_factor)
 
         model_scaled.update()
@@ -465,6 +501,6 @@ def scale_model(model: gp.Model,
 
     # Restore original OutputFlag if we changed it
     if original_output_flag == 0 and needs_output:
-        model.setParam('OutputFlag', 0)
+        model.setParam("OutputFlag", 0)
 
     return model_scaled

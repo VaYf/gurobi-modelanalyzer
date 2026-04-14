@@ -7,7 +7,8 @@ from typing import List, Tuple, Dict, Union
 import time
 import logging
 
-logger = logging.getLogger('gurobi_modelanalyzer.scaling')
+logger = logging.getLogger("gurobi_modelanalyzer.scaling")
+
 
 def _extract_range_stats(stats: str) -> str:
     """
@@ -23,20 +24,20 @@ def _extract_range_stats(stats: str) -> str:
     str
         Only the lines containing range information
     """
-    range_lines = [line for line in stats.split(
-        '\n') if 'range' in line.lower()]
-    return '\n'.join(range_lines)
+    range_lines = [line for line in stats.split("\n") if "range" in line.lower()]
+    return "\n".join(range_lines)
 
 
 def _print_scaling_log(
-        method: str,
-        original_stats: str,
-        scale_passes: int,
-        iteration_logs: List[Dict],
-        total_time: float,
-        final_stats: str,
-        scaling_time_limit: float = float('inf'),
-        mode: str = 'final'):
+    method: str,
+    original_stats: str,
+    scale_passes: int,
+    iteration_logs: List[Dict],
+    total_time: float,
+    final_stats: str,
+    scaling_time_limit: float = float("inf"),
+    mode: str = "final",
+):
     """
     Emit formatted scaling log entries via the module logger.
 
@@ -66,33 +67,29 @@ def _print_scaling_log(
         'iteration' = emit a single iteration row
         'final'     = emit complete log as one block (default)
     """
-    if mode == 'header':
+    if mode == "header":
         logger.info("\n" + "-" * 80)
         logger.info(f"Scaling Method: {method}")
         logger.info(f"Scale Passes:   {scale_passes}")
-        if scaling_time_limit != float('inf'):
-            logger.info(
-                f"Time Limit:     {scaling_time_limit:.2f} seconds")
+        if scaling_time_limit != float("inf"):
+            logger.info(f"Time Limit:     {scaling_time_limit:.2f} seconds")
         logger.info("\nOriginal Model Statistics:")
         logger.info(original_stats.rstrip())
         logger.info("\n" + "-" * 80)
-        logger.info(
-            f"{'Scale Pass':<12} {'Rel. Change':<15} {'Time (s)':<15}")
+        logger.info(f"{'Scale Pass':<12} {'Rel. Change':<15} {'Time (s)':<15}")
         logger.info("-" * 80)
         return
 
-    if mode == 'iteration':
+    if mode == "iteration":
         if len(iteration_logs) > 0:
             log = iteration_logs[-1]
-            pass_num = log.get('pass', '-')
-            rel_change = log.get('rel_change', 0.0)
-            iter_time = log.get('time', 0.0)
+            pass_num = log.get("pass", "-")
+            rel_change = log.get("rel_change", 0.0)
+            iter_time = log.get("time", 0.0)
             if isinstance(rel_change, float):
-                logger.info(
-                    f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.6f}")
+                logger.info(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.6f}")
             else:
-                logger.info(
-                    f"{pass_num:<12} {rel_change:<15} {iter_time:<15.6f}")
+                logger.info(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.6f}")
         return
 
     # mode == 'final': emit complete log as a single block
@@ -100,25 +97,21 @@ def _print_scaling_log(
     log_lines.append("\n" + "-" * 80)
     log_lines.append(f"Scaling Method: {method}")
     log_lines.append(f"Scale Passes:   {scale_passes}")
-    if scaling_time_limit != float('inf'):
-        log_lines.append(
-            f"Time Limit:     {scaling_time_limit:.2f} seconds")
+    if scaling_time_limit != float("inf"):
+        log_lines.append(f"Time Limit:     {scaling_time_limit:.2f} seconds")
     log_lines.append("\nOriginal Model Statistics:")
     log_lines.append(original_stats.rstrip())
     log_lines.append("\n" + "-" * 80)
-    log_lines.append(
-        f"{'Scale Pass':<12} {'Rel. Change':<15} {'Time (s)':<15}")
+    log_lines.append(f"{'Scale Pass':<12} {'Rel. Change':<15} {'Time (s)':<15}")
     log_lines.append("-" * 80)
     for log in iteration_logs:
-        pass_num = log.get('pass', '-')
-        rel_change = log.get('rel_change', 0.0)
-        iter_time = log.get('time', 0.0)
+        pass_num = log.get("pass", "-")
+        rel_change = log.get("rel_change", 0.0)
+        iter_time = log.get("time", 0.0)
         if isinstance(rel_change, float):
-            log_lines.append(
-                f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.6f}")
+            log_lines.append(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.6f}")
         else:
-            log_lines.append(
-                f"{pass_num:<12} {rel_change:<15} {iter_time:<15.6f}")
+            log_lines.append(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.6f}")
     log_lines.append("-" * 80)
     log_lines.append(f"\nScaling completed in {total_time:.6f} seconds")
     log_lines.append("\nScaled Model Ranges:")
@@ -132,6 +125,7 @@ class ModelData:
     """
     Encapsulates Gurobi model data extracted prior to scaling.
     """
+
     constr_matrix: scipy.sparse.csr_matrix = field(default=None)
     rhs_vector: np.ndarray = field(default=None)
     constr_sense: List[str] = field(default=None)
@@ -173,7 +167,7 @@ class ModelData:
 
 def _row_scale_factor(row_data: np.ndarray, method: str) -> float:
     """Compute a row scaling factor for the given method."""
-    if method in ('equilibration', 'arithmetic_mean'):
+    if method in ("equilibration", "arithmetic_mean"):
         return 1.0 / np.mean(row_data)
     else:  # geometric_mean
         return 1.0 / np.sqrt(np.min(row_data) * np.max(row_data))
@@ -181,27 +175,28 @@ def _row_scale_factor(row_data: np.ndarray, method: str) -> float:
 
 def _col_scale_factor(col_data: np.ndarray, method: str) -> float:
     """Compute a column scaling factor for the given method."""
-    if method == 'equilibration':
+    if method == "equilibration":
         return 1.0 / np.max(col_data)
-    elif method == 'arithmetic_mean':
+    elif method == "arithmetic_mean":
         return 1.0 / np.mean(col_data)
     else:  # geometric_mean
         return 1.0 / np.sqrt(np.min(col_data) * np.max(col_data))
 
 
 def _iterative_scaling(
-        constr_matrix: scipy.sparse.csr_matrix,
-        cols_to_scale: List[int],
-        rows_to_scale: List[int],
-        scale_passes: int,
-        scale_rel_tol: float,
-        method: str,
-        scaling_time_limit: float = float('inf'),
+    constr_matrix: scipy.sparse.csr_matrix,
+    cols_to_scale: List[int],
+    rows_to_scale: List[int],
+    scale_passes: int,
+    scale_rel_tol: float,
+    method: str,
+    scaling_time_limit: float = float("inf"),
 ) -> Tuple[
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        List[Dict]]:
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    List[Dict],
+]:
     """
     Shared iterative row/column scaling loop used by equilibration,
     geometric_mean, and arithmetic_mean.
@@ -236,8 +231,8 @@ def _iterative_scaling(
     """
     scaled_constr_matrix = constr_matrix
     num_rows, num_cols = constr_matrix.shape
-    row_scaling_total = scipy.sparse.eye(num_rows, format='csr')
-    col_scaling_total = scipy.sparse.eye(num_cols, format='csr')
+    row_scaling_total = scipy.sparse.eye(num_rows, format="csr")
+    col_scaling_total = scipy.sparse.eye(num_cols, format="csr")
     iteration_logs = []
     total_elapsed_time = 0.0
 
@@ -273,7 +268,8 @@ def _iterative_scaling(
                 end_idx = csc_indptr[j + 1]
                 if end_idx > start_idx:
                     col_factors_full[j] = _col_scale_factor(
-                        csc_data[start_idx:end_idx], method)
+                        csc_data[start_idx:end_idx], method
+                    )
 
         col_scaling_iter = scipy.sparse.diags(col_factors_full)
         scaled_constr_matrix_csc = scaled_constr_matrix_csc @ col_scaling_iter
@@ -281,19 +277,21 @@ def _iterative_scaling(
 
         rel_change = max(
             np.max(np.abs(row_factors - 1.0)) if row_factors.size > 0 else 0.0,
-            np.max(np.abs(col_factors_full - 1.0)) if col_factors_full.size > 0 else 0.0,
+            np.max(np.abs(col_factors_full - 1.0))
+            if col_factors_full.size > 0
+            else 0.0,
         )
 
         iter_time = time.time() - iter_start_time
         total_elapsed_time += iter_time
-        iteration_logs.append({
-            'pass': completed_scale_passes + 1,
-            'rel_change': rel_change,
-            'time': iter_time
-        })
-        _print_scaling_log(
-            '', '', 0, iteration_logs, 0.0, '',
-            mode='iteration')
+        iteration_logs.append(
+            {
+                "pass": completed_scale_passes + 1,
+                "rel_change": rel_change,
+                "time": iter_time,
+            }
+        )
+        _print_scaling_log("", "", 0, iteration_logs, 0.0, "", mode="iteration")
 
         if rel_change < scale_rel_tol:
             break
@@ -301,21 +299,16 @@ def _iterative_scaling(
             break
 
     scaled_constr_matrix = scaled_constr_matrix_csc.tocsr()
-    return (
-        scaled_constr_matrix, row_scaling_total,
-        col_scaling_total, iteration_logs
-    )
+    return (scaled_constr_matrix, row_scaling_total, col_scaling_total, iteration_logs)
 
 
 def _scale_single_qconstr(
-        qconstr: gp.QConstr,
-        model: gp.Model,
-        col_scaling: scipy.sparse.csr_matrix,
-        skip_row_scale: bool = False,
-        row_scale_override: float = None,
-) -> Tuple[
-        scipy.sparse.csr_matrix, np.ndarray,
-        str, float, float, str]:
+    qconstr: gp.QConstr,
+    model: gp.Model,
+    col_scaling: scipy.sparse.csr_matrix,
+    skip_row_scale: bool = False,
+    row_scale_override: float = None,
+) -> Tuple[scipy.sparse.csr_matrix, np.ndarray, str, float, float, str]:
     """
     Compute scaling for a single quadratic constraint.
 
@@ -366,7 +359,7 @@ def _scale_single_qconstr(
     # 2*sum(Q_ij^2) - sum(Q_ii^2)
     # Faster: sqrt(2 * ||q||_F^2 - ||diag(q)||_2^2)
     if qc.nnz > 0:
-        qc_norm_sq = np.sum(qc.data ** 2)  # ||q||_F^2
+        qc_norm_sq = np.sum(qc.data**2)  # ||q||_F^2
         qc_diag_norm_sq = np.sum(qc.diagonal() ** 2)  # ||diag(q)||_2^2
         qc_full_norm = np.sqrt(2.0 * qc_norm_sq - qc_diag_norm_sq)
     else:
@@ -389,8 +382,8 @@ def _scale_single_qconstr(
 
 
 def _threshold_small_coefficients(
-        data: Union[scipy.sparse.spmatrix, np.ndarray],
-        value_threshold: float = 1e-13,
+    data: Union[scipy.sparse.spmatrix, np.ndarray],
+    value_threshold: float = 1e-13,
 ) -> Union[scipy.sparse.csr_matrix, np.ndarray]:
     """
     Set coefficients below threshold to zero.
@@ -426,17 +419,18 @@ def _threshold_small_coefficients(
 
 
 def equilibration(
-        constr_matrix: scipy.sparse.csr_matrix,
-        cols_to_scale: List[int],
-        rows_to_scale: List[int],
-        scale_passes: int,
-        scale_rel_tol: float,
-        scaling_time_limit: float = float('inf'),
+    constr_matrix: scipy.sparse.csr_matrix,
+    cols_to_scale: List[int],
+    rows_to_scale: List[int],
+    scale_passes: int,
+    scale_rel_tol: float,
+    scaling_time_limit: float = float("inf"),
 ) -> Tuple[
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        List[Dict]]:
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    List[Dict],
+]:
     """
     Scale constraint matrix using equilibration method.
 
@@ -471,23 +465,29 @@ def equilibration(
         - iteration_logs: List of iteration information dictionaries
     """
     return _iterative_scaling(
-        constr_matrix, cols_to_scale, rows_to_scale,
-        scale_passes, scale_rel_tol, 'equilibration',
-        scaling_time_limit)
+        constr_matrix,
+        cols_to_scale,
+        rows_to_scale,
+        scale_passes,
+        scale_rel_tol,
+        "equilibration",
+        scaling_time_limit,
+    )
 
 
 def geometric_mean(
-        constr_matrix: scipy.sparse.csr_matrix,
-        cols_to_scale: List[int],
-        rows_to_scale: List[int],
-        scale_passes: int,
-        scale_rel_tol: float,
-        scaling_time_limit: float = float('inf'),
+    constr_matrix: scipy.sparse.csr_matrix,
+    cols_to_scale: List[int],
+    rows_to_scale: List[int],
+    scale_passes: int,
+    scale_rel_tol: float,
+    scaling_time_limit: float = float("inf"),
 ) -> Tuple[
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        List[Dict]]:
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    List[Dict],
+]:
     """
     Scale constraint matrix using geometric mean method.
 
@@ -521,23 +521,29 @@ def geometric_mean(
         - iteration_logs: List of iteration information dictionaries
     """
     return _iterative_scaling(
-        constr_matrix, cols_to_scale, rows_to_scale,
-        scale_passes, scale_rel_tol, 'geometric_mean',
-        scaling_time_limit)
+        constr_matrix,
+        cols_to_scale,
+        rows_to_scale,
+        scale_passes,
+        scale_rel_tol,
+        "geometric_mean",
+        scaling_time_limit,
+    )
 
 
 def arithmetic_mean(
-        constr_matrix: scipy.sparse.csr_matrix,
-        cols_to_scale: List[int],
-        rows_to_scale: List[int],
-        scale_passes: int,
-        scale_rel_tol: float,
-        scaling_time_limit: float = float('inf'),
+    constr_matrix: scipy.sparse.csr_matrix,
+    cols_to_scale: List[int],
+    rows_to_scale: List[int],
+    scale_passes: int,
+    scale_rel_tol: float,
+    scaling_time_limit: float = float("inf"),
 ) -> Tuple[
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        List[Dict]]:
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    List[Dict],
+]:
     """
     Scale constraint matrix using arithmetic mean method.
 
@@ -571,29 +577,35 @@ def arithmetic_mean(
         - iteration_logs: List of iteration information dictionaries
     """
     return _iterative_scaling(
-        constr_matrix, cols_to_scale, rows_to_scale,
-        scale_passes, scale_rel_tol, 'arithmetic_mean',
-        scaling_time_limit)
+        constr_matrix,
+        cols_to_scale,
+        rows_to_scale,
+        scale_passes,
+        scale_rel_tol,
+        "arithmetic_mean",
+        scaling_time_limit,
+    )
 
 
 def quad_equilibration(
-        constr_matrix: scipy.sparse.csr_matrix,
-        obj_vector: np.ndarray,
-        q_matrix: scipy.sparse.coo_matrix,
-        cols_to_scale: List[int],
-        rows_to_scale: List[int],
-        scale_passes: int,
-        scale_rel_tol: float,
-        scaling_lb: float = 1e-8,
-        scaling_ub: float = 1e8,
-        scaling_time_limit: float = float('inf'),
+    constr_matrix: scipy.sparse.csr_matrix,
+    obj_vector: np.ndarray,
+    q_matrix: scipy.sparse.coo_matrix,
+    cols_to_scale: List[int],
+    rows_to_scale: List[int],
+    scale_passes: int,
+    scale_rel_tol: float,
+    scaling_lb: float = 1e-8,
+    scaling_ub: float = 1e8,
+    scaling_time_limit: float = float("inf"),
 ) -> Tuple[
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        np.ndarray,
-        scipy.sparse.csr_matrix,
-        scipy.sparse.csr_matrix,
-        List[Dict]]:
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    np.ndarray,
+    scipy.sparse.csr_matrix,
+    scipy.sparse.csr_matrix,
+    List[Dict],
+]:
     """
     Scale quadratic program using KKT-based equilibration method.
 
@@ -645,8 +657,7 @@ def quad_equilibration(
 
     # Initialize scaling matrices
     num_rows, num_cols = constr_matrix.shape
-    diagonal_scaling_total = scipy.sparse.eye(
-        num_rows + num_cols, format='csr')
+    diagonal_scaling_total = scipy.sparse.eye(num_rows + num_cols, format="csr")
     obj_scaling_factor_total = 1.0
     zero_block = scipy.sparse.csr_matrix((num_rows, num_rows))
     iteration_logs = []
@@ -659,10 +670,12 @@ def quad_equilibration(
 
         # Build KKT matrix from CURRENT scaled matrices and convert to CSC for
         # column operations
-        kkt_matrix = scipy.sparse.bmat([
-            [scaled_q_matrix, scaled_constr_matrix.T],
-            [scaled_constr_matrix, zero_block]
-        ]).tocsc()  # CSC format for efficient column access
+        kkt_matrix = scipy.sparse.bmat(
+            [
+                [scaled_q_matrix, scaled_constr_matrix.T],
+                [scaled_constr_matrix, zero_block],
+            ]
+        ).tocsc()  # CSC format for efficient column access
 
         # Compute diagonal scaling factors using CSC direct access (much faster
         # than getcol)
@@ -690,15 +703,16 @@ def quad_equilibration(
                 col_data = kkt_data[start_idx:end_idx]
                 max_val = np.max(col_data)
                 scaling_factor = 1.0 / np.sqrt(max_val)
-                diagonal_factors[i] = np.clip(
-                    scaling_factor, scaling_lb, scaling_ub)
+                diagonal_factors[i] = np.clip(scaling_factor, scaling_lb, scaling_ub)
         diagonal_scaling_iter = scipy.sparse.diags(diagonal_factors)
 
         # Extract column and row scaling from THIS iteration
         col_scaling_iter = scipy.sparse.diags(
-            diagonal_scaling_iter.diagonal()[:num_cols])
+            diagonal_scaling_iter.diagonal()[:num_cols]
+        )
         row_scaling_iter = scipy.sparse.diags(
-            diagonal_scaling_iter.diagonal()[num_cols:])
+            diagonal_scaling_iter.diagonal()[num_cols:]
+        )
 
         # Apply M equilibration scaling
         scaled_constr_matrix = (
@@ -716,13 +730,11 @@ def quad_equilibration(
 
         denominator = max(
             np.mean(q_col_norms) if q_col_norms else 1.0,
-            np.max(np.abs(scaled_obj_vector))
-            if scaled_obj_vector.size > 0 else 1.0,
+            np.max(np.abs(scaled_obj_vector)) if scaled_obj_vector.size > 0 else 1.0,
             1.0,
         )
         obj_scaling_factor = 1.0 / denominator
-        obj_scaling_factor = np.clip(
-            obj_scaling_factor, scaling_lb, scaling_ub)
+        obj_scaling_factor = np.clip(obj_scaling_factor, scaling_lb, scaling_ub)
 
         # Apply cost scaling
         scaled_q_matrix = obj_scaling_factor * scaled_q_matrix
@@ -734,12 +746,13 @@ def quad_equilibration(
 
         # Check convergence
         norm_constr_diff = scipy.sparse.linalg.norm(
-            scaled_constr_matrix - previous_constr_matrix, ord='fro')
-        norm_constr_prev = scipy.sparse.linalg.norm(
-            previous_constr_matrix, ord='fro')
+            scaled_constr_matrix - previous_constr_matrix, ord="fro"
+        )
+        norm_constr_prev = scipy.sparse.linalg.norm(previous_constr_matrix, ord="fro")
         norm_q_diff = scipy.sparse.linalg.norm(
-            scaled_q_matrix - previous_q_matrix, ord='fro')
-        norm_q_prev = scipy.sparse.linalg.norm(previous_q_matrix, ord='fro')
+            scaled_q_matrix - previous_q_matrix, ord="fro"
+        )
+        norm_q_prev = scipy.sparse.linalg.norm(previous_q_matrix, ord="fro")
 
         rel_change = 0.0
         if norm_constr_prev > 0 and norm_q_prev > 0:
@@ -749,21 +762,16 @@ def quad_equilibration(
 
         iter_time = time.time() - iter_start_time
         total_elapsed_time += iter_time
-        iteration_logs.append({
-            'pass': completed_scale_passes + 1,
-            'rel_change': rel_change,
-            'time': iter_time
-        })
+        iteration_logs.append(
+            {
+                "pass": completed_scale_passes + 1,
+                "rel_change": rel_change,
+                "time": iter_time,
+            }
+        )
 
         # Emit iteration progress
-        _print_scaling_log(
-            '',
-            '',
-            0,
-            iteration_logs,
-            0.0,
-            '',
-            mode='iteration')
+        _print_scaling_log("", "", 0, iteration_logs, 0.0, "", mode="iteration")
 
         if norm_constr_prev > 0 and norm_q_prev > 0:
             rel_constr_diff = norm_constr_diff / norm_constr_prev
@@ -777,15 +785,16 @@ def quad_equilibration(
             break
 
     # Extract final column and row scaling
-    col_scaling_total = scipy.sparse.diags(
-        diagonal_scaling_total.diagonal()[:num_cols])
-    row_scaling_total = scipy.sparse.diags(
-        diagonal_scaling_total.diagonal()[num_cols:])
+    col_scaling_total = scipy.sparse.diags(diagonal_scaling_total.diagonal()[:num_cols])
+    row_scaling_total = scipy.sparse.diags(diagonal_scaling_total.diagonal()[num_cols:])
 
     return (
-        scaled_constr_matrix, scaled_q_matrix,
-        scaled_obj_vector, row_scaling_total,
-        col_scaling_total, iteration_logs
+        scaled_constr_matrix,
+        scaled_q_matrix,
+        scaled_obj_vector,
+        row_scaling_total,
+        col_scaling_total,
+        iteration_logs,
     )
 
 
@@ -801,8 +810,8 @@ def _compute_violation(sense: str, lhs_value: float, rhs: float) -> float:
 
 
 def _compute_constraint_violations(
-        model: gp.Model,
-        unscaled_variables: Union[List[float], np.ndarray],
+    model: gp.Model,
+    unscaled_variables: Union[List[float], np.ndarray],
 ) -> Dict[str, Dict[str, float]]:
     """
     Compute constraint and bound violations for a given candidate solution.
@@ -837,18 +846,13 @@ def _compute_constraint_violations(
     constraint_violations = {}
     bound_violations = {}
     vars_list = model.getVars()
-    solution_dict = {
-        var: val for var,
-        val in zip(
-            vars_list,
-            unscaled_variables)}
+    solution_dict = {var: val for var, val in zip(vars_list, unscaled_variables)}
 
     # Process bound violations
     for var, val in zip(vars_list, unscaled_variables):
         lb_vio = max(0.0, var.LB - val) if var.LB > -GRB.INFINITY else 0.0
         ub_vio = max(0.0, val - var.UB) if var.UB < GRB.INFINITY else 0.0
-        bound_violations[var.VarName] = lb_vio + \
-            ub_vio  # One of the two will be zero
+        bound_violations[var.VarName] = lb_vio + ub_vio  # One of the two will be zero
 
     # Process linear constraints
     for constr in model.getConstrs():
@@ -865,8 +869,7 @@ def _compute_constraint_violations(
             coeff = row.getCoeff(i)
             lhs_value += coeff * solution_dict.get(var, 0.0)
 
-        constraint_violations[name] = _compute_violation(
-            sense, lhs_value, rhs)
+        constraint_violations[name] = _compute_violation(sense, lhs_value, rhs)
 
     # Process quadratic constraints
     try:
@@ -887,8 +890,7 @@ def _compute_constraint_violations(
             q_full = q + q.T - np.diag(q.diagonal())  # Make q symmetric
             lhs_value = float(np.asarray(x.T @ q_full @ x + c.T @ x).flat[0])
 
-            constraint_violations[name] = _compute_violation(
-                sense, lhs_value, rhs)
+            constraint_violations[name] = _compute_violation(sense, lhs_value, rhs)
 
     except ImportError:
         # numpy not available, skip quadratic constraints
@@ -896,9 +898,8 @@ def _compute_constraint_violations(
         if num_qconstrs > 0:
             print(
                 f"Warning: {num_qconstrs} quadratic constraint(s) "
-                f"found but numpy is not available.")
-            print(
-                "         Quadratic constraint violations "
-                "will not be computed.")
+                f"found but numpy is not available."
+            )
+            print("         Quadratic constraint violations will not be computed.")
 
-    return {'constraints': constraint_violations, 'bounds': bound_violations}
+    return {"constraints": constraint_violations, "bounds": bound_violations}

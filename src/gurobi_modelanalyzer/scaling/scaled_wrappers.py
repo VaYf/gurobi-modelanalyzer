@@ -6,6 +6,7 @@ from typing import List, Union
 
 from .methods import _compute_constraint_violations
 
+
 class ScaledVar:
     """
     Wrapper around a Gurobi variable that provides access to unscaled
@@ -111,8 +112,7 @@ class ScaledModel(gp.Model):
             col_scaling_diag = self._col_scaling.diagonal()
 
             self._scaled_vars = [
-                ScaledVar(var, col_scaling_diag[i])
-                for i, var in enumerate(gurobi_vars)
+                ScaledVar(var, col_scaling_diag[i]) for i, var in enumerate(gurobi_vars)
             ]
 
         return self._scaled_vars
@@ -122,8 +122,8 @@ class ScaledModel(gp.Model):
         if getattr(self, cache_attr) is None:
             if self._original_model is None:
                 raise ValueError(
-                    "Original model not stored. "
-                    "Cannot access constraint wrappers.")
+                    "Original model not stored. Cannot access constraint wrappers."
+                )
             objects = get_method(self._original_model)
             setattr(self, cache_attr, [wrapper_cls(o) for o in objects])
         return getattr(self, cache_attr)
@@ -138,7 +138,8 @@ class ScaledModel(gp.Model):
             List of wrapped constraints with violation tracking
         """
         return self._get_cached_wrappers(
-            '_scaled_constrs', lambda m: m.getConstrs(), ScaledConstr)
+            "_scaled_constrs", lambda m: m.getConstrs(), ScaledConstr
+        )
 
     def getQConstrsUnscaled(self):
         """
@@ -150,7 +151,8 @@ class ScaledModel(gp.Model):
             List of wrapped quadratic constraints with violation tracking
         """
         return self._get_cached_wrappers(
-            '_scaled_qconstrs', lambda m: m.getQConstrs(), ScaledQConstr)
+            "_scaled_qconstrs", lambda m: m.getQConstrs(), ScaledQConstr
+        )
 
     def ComputeUnscVio(self, original_model):
         """
@@ -182,19 +184,19 @@ class ScaledModel(gp.Model):
         unscaled_values = [var.Xunsc for var in unscaled_vars]
 
         # Compute constraint and bound violations using the original model
-        violations = _compute_constraint_violations(
-            original_model, unscaled_values)
+        violations = _compute_constraint_violations(original_model, unscaled_values)
 
         # Store violations in dictionaries
-        self._constraint_violations = violations['constraints']
-        self._bound_violations = violations['bounds']
+        self._constraint_violations = violations["constraints"]
+        self._bound_violations = violations["bounds"]
 
         # Store violations in constraint wrappers
         scaled_constrs = self.getConstrsUnscaled()
         for scaled_constr in scaled_constrs:
             constr_name = scaled_constr.ConstrName
             scaled_constr.UnscViolation = self._constraint_violations.get(
-                constr_name, 0.0)
+                constr_name, 0.0
+            )
 
         # Store violations in quadratic constraint wrappers
         if original_model.NumQConstrs > 0:
@@ -202,24 +204,23 @@ class ScaledModel(gp.Model):
             for scaled_qconstr in scaled_qconstrs:
                 qconstr_name = scaled_qconstr.QCName
                 scaled_qconstr.UnscViolation = self._constraint_violations.get(
-                    qconstr_name, 0.0)
+                    qconstr_name, 0.0
+                )
 
         # Store bound violations in variable wrappers
         for i, var in enumerate(unscaled_vars):
-            var_name = var.VarName.replace('_scaled', '')
+            var_name = var.VarName.replace("_scaled", "")
             var.UnscBoundViolation = self._bound_violations.get(var_name, 0.0)
 
         # Compute and store maximum violations
         all_constraint_vios = list(self._constraint_violations.values())
         all_bound_vios = list(self._bound_violations.values())
 
-        self._max_unsc_constr_vio = max(
-            all_constraint_vios) if all_constraint_vios else 0.0
-        self._max_unsc_bound_vio = max(
-            all_bound_vios) if all_bound_vios else 0.0
-        self._max_unsc_vio = max(
-            self._max_unsc_constr_vio,
-            self._max_unsc_bound_vio)
+        self._max_unsc_constr_vio = (
+            max(all_constraint_vios) if all_constraint_vios else 0.0
+        )
+        self._max_unsc_bound_vio = max(all_bound_vios) if all_bound_vios else 0.0
+        self._max_unsc_vio = max(self._max_unsc_constr_vio, self._max_unsc_bound_vio)
 
     @property
     def MaxUnscVio(self):
@@ -231,7 +232,7 @@ class ScaledModel(gp.Model):
         float
             Maximum violation, or None if not computed
         """
-        return getattr(self, '_max_unsc_vio', None)
+        return getattr(self, "_max_unsc_vio", None)
 
     @property
     def MaxUnscConstrVio(self):
@@ -244,7 +245,7 @@ class ScaledModel(gp.Model):
         float
             Maximum constraint violation, or None if not computed
         """
-        return getattr(self, '_max_unsc_constr_vio', None)
+        return getattr(self, "_max_unsc_constr_vio", None)
 
     @property
     def MaxUnscBoundVio(self):
@@ -256,7 +257,7 @@ class ScaledModel(gp.Model):
         float
             Maximum bound violation, or None if not computed
         """
-        return getattr(self, '_max_unsc_bound_vio', None)
+        return getattr(self, "_max_unsc_bound_vio", None)
 
     @property
     def ScalingTime(self):
@@ -268,7 +269,7 @@ class ScaledModel(gp.Model):
         float
             Scaling time in seconds, or None if not available
         """
-        return getattr(self, '_scaling_time', None)
+        return getattr(self, "_scaling_time", None)
 
     @property
     def ColScaling(self):
@@ -281,7 +282,7 @@ class ScaledModel(gp.Model):
             Diagonal matrix with column scaling factors, or None if
             not available
         """
-        return getattr(self, '_col_scaling', None)
+        return getattr(self, "_col_scaling", None)
 
     @property
     def RowScaling(self):
@@ -293,7 +294,7 @@ class ScaledModel(gp.Model):
         scipy.sparse.csr_matrix
             Diagonal matrix with row scaling factors, or None if not available
         """
-        return getattr(self, '_row_scaling', None)
+        return getattr(self, "_row_scaling", None)
 
     def ComputeUnscObj(self, original_model):
         """
@@ -327,9 +328,10 @@ class ScaledModel(gp.Model):
         if q_matrix.nnz > 0:
             # Quadratic contribution: x^T q x
             # q is upper triangular, need full symmetric form
-            q_full = q_matrix + q_matrix.T - \
-                scipy.sparse.diags(q_matrix.diagonal())
-            quad_obj = float(np.asarray(unscaled_values @ q_full @ unscaled_values).flat[0])
+            q_full = q_matrix + q_matrix.T - scipy.sparse.diags(q_matrix.diagonal())
+            quad_obj = float(
+                np.asarray(unscaled_values @ q_full @ unscaled_values).flat[0]
+            )
         else:
             quad_obj = 0.0
 
@@ -349,4 +351,4 @@ class ScaledModel(gp.Model):
             Unscaled objective value, or None if not computed.
             Call ComputeUnscObj(original_model) first.
         """
-        return getattr(self, '_unsc_obj_val', None)
+        return getattr(self, "_unsc_obj_val", None)
