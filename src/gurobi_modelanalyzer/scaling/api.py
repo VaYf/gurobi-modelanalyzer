@@ -435,9 +435,10 @@ def scale_model(
 
     model_scaled.update()
 
-    # Store scaling matrices
+    # Store scaling matrices and reference to the original model
     model_scaled._col_scaling = col_scaling
     model_scaled._row_scaling = row_scaling
+    model_scaled._original_model = model
 
     # Add quadratic objective term if present
     if q_matrix.nnz > 0:

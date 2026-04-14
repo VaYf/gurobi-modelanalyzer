@@ -154,7 +154,7 @@ class ScaledModel(gp.Model):
             "_scaled_qconstrs", lambda m: m.getQConstrs(), ScaledQConstr
         )
 
-    def ComputeUnscVio(self, original_model):
+    def ComputeUnscVio(self):
         """
         Compute unscaled constraint and bound violations using the
         unscaled variable values.
@@ -169,22 +169,20 @@ class ScaledModel(gp.Model):
           all constraints and bounds
         - model_scaled.MaxUnscConstrVio for max constraint violation only
         - model_scaled.MaxUnscBoundVio for max bound violation only
-
-        Parameters:
-        -----------
-        original_model : gp.Model
-            The original unscaled model with same structure as this
-            scaled model
         """
-        # Store reference to original model
-        self._original_model = original_model
+        if self._original_model is None:
+            raise ValueError(
+                "Original model not set. ScaledModel must be created via scale_model()."
+            )
 
         # Get unscaled solution values
         unscaled_vars = self.getVarsUnscaled()
         unscaled_values = [var.Xunsc for var in unscaled_vars]
 
         # Compute constraint and bound violations using the original model
-        violations = _compute_constraint_violations(original_model, unscaled_values)
+        violations = _compute_constraint_violations(
+            self._original_model, unscaled_values
+        )
 
         # Store violations in dictionaries
         self._constraint_violations = violations["constraints"]
@@ -199,7 +197,7 @@ class ScaledModel(gp.Model):
             )
 
         # Store violations in quadratic constraint wrappers
-        if original_model.NumQConstrs > 0:
+        if self._original_model.NumQConstrs > 0:
             scaled_qconstrs = self.getQConstrsUnscaled()
             for scaled_qconstr in scaled_qconstrs:
                 qconstr_name = scaled_qconstr.QCName
@@ -296,35 +294,32 @@ class ScaledModel(gp.Model):
         """
         return getattr(self, "_row_scaling", None)
 
-    def ComputeUnscObj(self, original_model):
+    def ComputeUnscObj(self):
         """
         Compute the unscaled objective value using original model coefficients
         and unscaled variable values.
 
         This method should be called after optimization to get the objective
-        value in the original (unscaled) space.
-
-        Parameters:
-        -----------
-        original_model : gp.Model
-            The original unscaled model with same structure as this
-            scaled model
+        value in the original (unscaled) space. The result is stored in
+        :py:attr:`UnscObjVal`.
         """
-        # Store reference to original model if not already set
-        self._original_model = original_model
+        if self._original_model is None:
+            raise ValueError(
+                "Original model not set. ScaledModel must be created via scale_model()."
+            )
 
         # Get unscaled solution values
         unscaled_vars = self.getVarsUnscaled()
         unscaled_values = np.array([var.Xunsc for var in unscaled_vars])
 
         # Get original objective coefficients
-        orig_obj = np.array(original_model.getAttr("Obj"))
+        orig_obj = np.array(self._original_model.getAttr("Obj"))
 
         # Compute linear objective contribution
         linear_obj = np.dot(orig_obj, unscaled_values)
 
         # Check for quadratic objective
-        q_matrix = original_model.getQ()
+        q_matrix = self._original_model.getQ()
         if q_matrix.nnz > 0:
             # Quadratic contribution: x^T q x
             # q is upper triangular, need full symmetric form
@@ -349,6 +344,18 @@ class ScaledModel(gp.Model):
         --------
         float
             Unscaled objective value, or None if not computed.
-            Call ComputeUnscObj(original_model) first.
+            Call :py:meth:`ComputeUnscObj` first.
         """
         return getattr(self, "_unsc_obj_val", None)
+
+    @property
+    def OriginalModel(self):
+        """
+        The original (unscaled) Gurobi model that was passed to
+        :func:`scale_model`.
+
+        Returns:
+        --------
+        gp.Model or None
+        """
+        return self._original_model

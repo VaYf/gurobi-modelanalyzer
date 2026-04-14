@@ -194,8 +194,8 @@ optimization, use :py:meth:`ScaledModel.ComputeUnscObj`:
 .. code-block:: python
 
    m_scaled.optimize()
-   unsc_obj = m_scaled.ComputeUnscObj(m)
-   print(f"Unscaled objective: {unsc_obj:.6e}")
+   m_scaled.ComputeUnscObj()
+   print(f"Unscaled objective: {m_scaled.UnscObjVal:.6e}")
    print(f"Scaled objective:   {m_scaled.ObjVal:.6e}")
 
 The unscaled and scaled objective values will generally differ because the

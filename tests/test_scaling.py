@@ -181,7 +181,7 @@ class TestScaleModelSolve(unittest.TestCase):
         ms.optimize()
         self.assertEqual(ms.Status, GRB.OPTIMAL)
 
-        ms.ComputeUnscVio(self.model)
+        ms.ComputeUnscVio()
         self.assertIsNotNone(ms.MaxUnscVio)
         self.assertLess(ms.MaxUnscVio, 1e-4)
         ms.close()
@@ -419,7 +419,7 @@ class TestQCPScaling(unittest.TestCase):
         ms = scale_model(self.model, "equilibration", scaling_log_to_console=0)
         ms.setParam("OutputFlag", 0)
         ms.optimize()
-        ms.ComputeUnscVio(self.model)
+        ms.ComputeUnscVio()
 
         qconstrs = ms.getQConstrsUnscaled()
         self.assertEqual(len(qconstrs), self.model.NumQConstrs)
@@ -446,7 +446,7 @@ class TestQCPScaling(unittest.TestCase):
         ms.optimize()
         self.assertEqual(ms.Status, GRB.OPTIMAL)
 
-        ms.ComputeUnscVio(self.model)
+        ms.ComputeUnscVio()
         self.assertIsNotNone(ms.MaxUnscVio)
         self.assertLess(ms.MaxUnscVio, 1e-4)
         ms.close()
@@ -455,7 +455,7 @@ class TestQCPScaling(unittest.TestCase):
         ms = scale_model(self.model, "equilibration", scaling_log_to_console=0)
         ms.setParam("OutputFlag", 0)
         ms.optimize()
-        ms.ComputeUnscVio(self.model)
+        ms.ComputeUnscVio()
 
         for qc in ms.getQConstrsUnscaled():
             self.assertIsNotNone(qc.UnscViolation)
@@ -629,7 +629,7 @@ class TestInitScaling(unittest.TestCase):
         )
         ms.setParam("OutputFlag", 0)
         ms.optimize()
-        ms.ComputeUnscVio(self.model)
+        ms.ComputeUnscVio()
         self.assertLess(ms.MaxUnscVio, 1e-4)
         ms.close()
 
@@ -727,7 +727,7 @@ class TestMIQCPScaling(unittest.TestCase):
         self.assertEqual(ms.Status, GRB.OPTIMAL)
         # Must not raise: "only 0-dimensional arrays can be converted to
         # Python scalars"
-        ms.ComputeUnscVio(self.model)
+        ms.ComputeUnscVio()
         self.assertIsNotNone(ms.MaxUnscVio)
         self.assertIsInstance(ms.MaxUnscVio, float)
         ms.close()
@@ -738,7 +738,7 @@ class TestMIQCPScaling(unittest.TestCase):
         ms.setParam("OutputFlag", 0)
         ms.optimize()
         self.assertEqual(ms.Status, GRB.OPTIMAL)
-        ms.ComputeUnscVio(self.model)
+        ms.ComputeUnscVio()
         self.assertLess(ms.MaxUnscVio, 1e-4)
         ms.close()
 
@@ -748,7 +748,7 @@ class TestMIQCPScaling(unittest.TestCase):
         ms.setParam("OutputFlag", 0)
         ms.optimize()
         self.assertEqual(ms.Status, GRB.OPTIMAL)
-        ms.ComputeUnscObj(self.model)
+        ms.ComputeUnscObj()
         self.assertIsNotNone(ms.UnscObjVal)
         self.assertIsInstance(ms.UnscObjVal, float)
         ms.close()

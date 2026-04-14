@@ -99,24 +99,22 @@ unscaled solutions and computing violations in the original variable space.
 
    :return: List of :class:`ScaledQConstr` objects.
 
-.. py:method:: ScaledModel.ComputeUnscVio(original_model)
+.. py:method:: ScaledModel.ComputeUnscVio()
 
    Compute constraint and bound violations in the original (unscaled) variable
    space. Must be called after optimization. Populates ``UnscViolation`` on
    all constraint wrappers and ``UnscBoundViolation`` on all variable wrappers,
    and sets the ``MaxUnscVio``, ``MaxUnscConstrVio``, and ``MaxUnscBoundVio``
-   properties.
+   properties. The original model is stored automatically by
+   :func:`scale_model`.
 
-   :param original_model: The original (unscaled) Gurobi model.
-
-.. py:method:: ScaledModel.ComputeUnscObj(original_model)
+.. py:method:: ScaledModel.ComputeUnscObj()
 
    Compute the objective value in the original (unscaled) variable space using
    the unscaled solution values from :py:meth:`getVarsUnscaled`. Must be
-   called after optimization.
+   called after optimization. Result is stored in :py:attr:`UnscObjVal`.
 
-   :param original_model: The original (unscaled) Gurobi model.
-   :return: The unscaled objective value as a float.
+   :return: ``None`` (access the result via :py:attr:`UnscObjVal`).
 
 .. py:attribute:: ScaledModel.MaxUnscVio
 

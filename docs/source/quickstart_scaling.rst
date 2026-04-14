@@ -71,7 +71,7 @@ constraint and bound violations in the original (unscaled) variable space:
 
 .. code-block:: python
 
-   m_scaled.ComputeUnscVio(m)
+   m_scaled.ComputeUnscVio()
 
    print(f"Max constraint violation: {m_scaled.MaxUnscConstrVio:.2e}")
    print(f"Max bound violation:      {m_scaled.MaxUnscBoundVio:.2e}")
