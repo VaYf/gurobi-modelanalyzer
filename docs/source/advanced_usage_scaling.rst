@@ -103,7 +103,7 @@ Opt-Out Per Variable or Constraint
 ***********************************
 
 Individual variables or constraints can be excluded from scaling by setting a
-``_scale`` attribute to ``0`` before calling :py:func:`scale_model`. This is
+``_scale`` attribute to ``0`` before calling :py:func:`~gurobi_modelanalyzer.scale_model`. This is
 useful when a particular variable or constraint is already well-scaled and
 should not be modified, or when the physical interpretation of a coefficient
 must be preserved.
@@ -126,7 +126,7 @@ User-Provided Initial Scaling
 For cases where domain knowledge about suitable scaling factors is available,
 the ``init_scaling`` parameter controls how user-provided initial factors are
 used. These factors are set via the ``_init_scaling`` attribute on individual
-variables and constraints before calling :py:func:`scale_model`.
+variables and constraints before calling :py:func:`~gurobi_modelanalyzer.scale_model`.
 
 **Mode 0 (default):** ignore any ``_init_scaling`` attributes and run the
 iterative algorithm from the identity scaling.

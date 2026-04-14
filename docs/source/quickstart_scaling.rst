@@ -41,7 +41,7 @@ methods and controlling the scaling algorithm in detail.
 Scaling a Model
 ***************
 
-The simplest way to use the module is to call :py:func:`scale_model` with a
+The simplest way to use the module is to call :py:func:`~gurobi_modelanalyzer.scale_model` with a
 model and a method name:
 
 .. code-block:: python

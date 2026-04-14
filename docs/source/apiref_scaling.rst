@@ -71,7 +71,7 @@ ScaledModel
 ***********
 
 ``ScaledModel`` is a subclass of ``gurobipy.Model`` returned by
-:py:func:`scale_model`. It adds methods and properties for recovering
+:py:func:`~gurobi_modelanalyzer.scale_model`. It adds methods and properties for recovering
 unscaled solutions and computing violations in the original variable space.
 
 .. py:method:: ScaledModel.getVarsUnscaled()
@@ -81,7 +81,7 @@ unscaled solutions and computing violations in the original variable space.
    (``X``) and the unscaled value (``Xunsc``). Must be called after
    optimization.
 
-   :return: List of :class:`ScaledVar` objects.
+   :return: List of :ref:`ScaledVar <APIScaledVarLabel>` objects.
 
 .. py:method:: ScaledModel.getConstrsUnscaled()
 
@@ -89,7 +89,7 @@ unscaled solutions and computing violations in the original variable space.
    per linear constraint. After calling :py:meth:`ComputeUnscVio`, each
    object exposes the unscaled constraint violation via ``UnscViolation``.
 
-   :return: List of :class:`ScaledConstr` objects.
+   :return: List of :ref:`ScaledConstr <APIScaledConstrLabel>` objects.
 
 .. py:method:: ScaledModel.getQConstrsUnscaled()
 
@@ -97,7 +97,7 @@ unscaled solutions and computing violations in the original variable space.
    per quadratic constraint. After calling :py:meth:`ComputeUnscVio`, each
    object exposes the unscaled constraint violation via ``UnscViolation``.
 
-   :return: List of :class:`ScaledQConstr` objects.
+   :return: List of :ref:`ScaledQConstr <APIScaledConstrLabel>` objects.
 
 .. py:method:: ScaledModel.ComputeUnscVio()
 
@@ -106,15 +106,20 @@ unscaled solutions and computing violations in the original variable space.
    all constraint wrappers and ``UnscBoundViolation`` on all variable wrappers,
    and sets the ``MaxUnscVio``, ``MaxUnscConstrVio``, and ``MaxUnscBoundVio``
    properties. The original model is stored automatically by
-   :func:`scale_model`.
+   :func:`~gurobi_modelanalyzer.scale_model`.
 
 .. py:method:: ScaledModel.ComputeUnscObj()
 
    Compute the objective value in the original (unscaled) variable space using
    the unscaled solution values from :py:meth:`getVarsUnscaled`. Must be
-   called after optimization. Result is stored in :py:attr:`UnscObjVal`.
+   called after optimization. Result is stored in :py:attr:`ScaledModel.UnscObjVal`.
 
-   :return: ``None`` (access the result via :py:attr:`UnscObjVal`).
+   :return: ``None`` (access the result via :py:attr:`ScaledModel.UnscObjVal`).
+
+.. py:attribute:: ScaledModel.UnscObjVal
+
+   Unscaled objective value computed by :py:meth:`ComputeUnscObj`. ``None``
+   until that method is called.
 
 .. py:attribute:: ScaledModel.MaxUnscVio
 
