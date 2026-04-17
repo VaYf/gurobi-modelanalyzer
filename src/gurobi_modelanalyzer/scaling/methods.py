@@ -36,6 +36,7 @@ def _print_scaling_log(
     total_time: float,
     final_stats: str,
     scaling_time_limit: float = float("inf"),
+    scale_conv_tol: float = 1e-4,
     mode: str = "final",
 ):
     """
@@ -68,16 +69,14 @@ def _print_scaling_log(
         'final'     = emit complete log as one block (default)
     """
     if mode == "header":
-        logger.info("\n" + "-" * 80)
         logger.info(f"Scaling Method: {method}")
         logger.info(f"Scale Passes:   {scale_passes}")
+        logger.info(f"Conv. Tol.:     {scale_conv_tol:.6e}")
         if scaling_time_limit != float("inf"):
             logger.info(f"Time Limit:     {scaling_time_limit:.2f} seconds")
-        logger.info("\nOriginal Model Statistics:")
+        logger.info("Original Model Statistics:")
         logger.info(original_stats.rstrip())
-        logger.info("\n" + "-" * 80)
-        logger.info(f"{'Scale Pass':<12} {'Rel. Change':<15} {'Time (s)':<15}")
-        logger.info("-" * 80)
+        logger.info(f"{'Scale Pass':<12} {'Max Factor Dev.':<17} {'Time (s)':<15}")
         return
 
     if mode == "iteration":
@@ -87,36 +86,32 @@ def _print_scaling_log(
             rel_change = log.get("rel_change", 0.0)
             iter_time = log.get("time", 0.0)
             if isinstance(rel_change, float):
-                logger.info(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.2f}")
+                logger.info(f"{pass_num:<12} {rel_change:<17.6e} {iter_time:<15.2f}")
             else:
-                logger.info(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.2f}")
+                logger.info(f"{pass_num:<12} {rel_change:<17} {iter_time:<15.2f}")
         return
 
     # mode == 'final': emit complete log as a single block
     log_lines = []
-    log_lines.append("\n" + "-" * 80)
     log_lines.append(f"Scaling Method: {method}")
     log_lines.append(f"Scale Passes:   {scale_passes}")
+    log_lines.append(f"Conv. Tol.:     {scale_conv_tol:.6e}")
     if scaling_time_limit != float("inf"):
         log_lines.append(f"Time Limit:     {scaling_time_limit:.2f} seconds")
-    log_lines.append("\nOriginal Model Statistics:")
+    log_lines.append("Original Model Statistics:")
     log_lines.append(original_stats.rstrip())
-    log_lines.append("\n" + "-" * 80)
-    log_lines.append(f"{'Scale Pass':<12} {'Rel. Change':<15} {'Time (s)':<15}")
-    log_lines.append("-" * 80)
+    log_lines.append(f"{'Scale Pass':<12} {'Max Factor Dev.':<17} {'Time (s)':<15}")
     for log in iteration_logs:
         pass_num = log.get("pass", "-")
         rel_change = log.get("rel_change", 0.0)
         iter_time = log.get("time", 0.0)
         if isinstance(rel_change, float):
-            log_lines.append(f"{pass_num:<12} {rel_change:<15.6e} {iter_time:<15.2f}")
+            log_lines.append(f"{pass_num:<12} {rel_change:<17.6e} {iter_time:<15.2f}")
         else:
-            log_lines.append(f"{pass_num:<12} {rel_change:<15} {iter_time:<15.2f}")
-    log_lines.append("-" * 80)
-    log_lines.append(f"\nScaling completed in {total_time:.2f} seconds")
-    log_lines.append("\nScaled Model Ranges:")
+            log_lines.append(f"{pass_num:<12} {rel_change:<17} {iter_time:<15.2f}")
+    log_lines.append(f"Scaling completed in {total_time:.2f} seconds")
+    log_lines.append("Scaled Model Ranges:")
     log_lines.append(_extract_range_stats(final_stats))
-    log_lines.append("-" * 80 + "\n")
     logger.info("\n".join(log_lines))
 
 
@@ -190,7 +185,7 @@ def _iterative_scaling(
     cols_to_scale: List[int],
     rows_to_scale: List[int],
     scale_passes: int,
-    scale_rel_tol: float,
+    scale_conv_tol: float,
     method: str,
     scaling_time_limit: float = float("inf"),
 ) -> Tuple[
@@ -213,7 +208,7 @@ def _iterative_scaling(
         Row indices to scale
     scale_passes : int
         Maximum number of scaling iterations
-    scale_rel_tol : float
+    scale_conv_tol : float
         Relative tolerance for convergence check
     method : str
         Scaling method ('equilibration', 'geometric_mean', or
@@ -295,7 +290,7 @@ def _iterative_scaling(
         )
         _print_scaling_log("", "", 0, iteration_logs, 0.0, "", mode="iteration")
 
-        if rel_change < scale_rel_tol:
+        if rel_change < scale_conv_tol:
             break
         if total_elapsed_time >= scaling_time_limit:
             break
@@ -429,7 +424,7 @@ def equilibration(
     cols_to_scale: List[int],
     rows_to_scale: List[int],
     scale_passes: int,
-    scale_rel_tol: float,
+    scale_conv_tol: float,
     scaling_time_limit: float = float("inf"),
 ) -> Tuple[
     scipy.sparse.csr_matrix,
@@ -455,7 +450,7 @@ def equilibration(
         keep a row scaling factor of 1)
     scale_passes : int
         Maximum number of scaling iterations
-    scale_rel_tol : float
+    scale_conv_tol : float
         Relative tolerance for convergence check
     scaling_time_limit : float, optional
         Time limit in seconds for scaling iterations (default: inf - no limit)
@@ -475,7 +470,7 @@ def equilibration(
         cols_to_scale,
         rows_to_scale,
         scale_passes,
-        scale_rel_tol,
+        scale_conv_tol,
         "equilibration",
         scaling_time_limit,
     )
@@ -486,7 +481,7 @@ def geometric_mean(
     cols_to_scale: List[int],
     rows_to_scale: List[int],
     scale_passes: int,
-    scale_rel_tol: float,
+    scale_conv_tol: float,
     scaling_time_limit: float = float("inf"),
 ) -> Tuple[
     scipy.sparse.csr_matrix,
@@ -511,7 +506,7 @@ def geometric_mean(
         keep a row scaling factor of 1)
     scale_passes : int
         Maximum number of scaling iterations
-    scale_rel_tol : float
+    scale_conv_tol : float
         Relative tolerance for convergence check
     scaling_time_limit : float, optional
         Time limit in seconds for scaling iterations (default: inf - no limit)
@@ -531,7 +526,7 @@ def geometric_mean(
         cols_to_scale,
         rows_to_scale,
         scale_passes,
-        scale_rel_tol,
+        scale_conv_tol,
         "geometric_mean",
         scaling_time_limit,
     )
@@ -542,7 +537,7 @@ def arithmetic_mean(
     cols_to_scale: List[int],
     rows_to_scale: List[int],
     scale_passes: int,
-    scale_rel_tol: float,
+    scale_conv_tol: float,
     scaling_time_limit: float = float("inf"),
 ) -> Tuple[
     scipy.sparse.csr_matrix,
@@ -567,7 +562,7 @@ def arithmetic_mean(
         keep a row scaling factor of 1)
     scale_passes : int
         Maximum number of scaling iterations
-    scale_rel_tol : float
+    scale_conv_tol : float
         Relative tolerance for convergence check
     scaling_time_limit : float, optional
         Time limit in seconds for scaling iterations (default: inf - no limit)
@@ -587,7 +582,7 @@ def arithmetic_mean(
         cols_to_scale,
         rows_to_scale,
         scale_passes,
-        scale_rel_tol,
+        scale_conv_tol,
         "arithmetic_mean",
         scaling_time_limit,
     )
@@ -600,7 +595,7 @@ def quad_equilibration(
     cols_to_scale: List[int],
     rows_to_scale: List[int],
     scale_passes: int,
-    scale_rel_tol: float,
+    scale_conv_tol: float,
     scaling_lb: float = 1e-8,
     scaling_ub: float = 1e8,
     scaling_time_limit: float = float("inf"),
@@ -635,7 +630,7 @@ def quad_equilibration(
         keep a row scaling factor of 1)
     scale_passes : int
         Maximum number of scaling iterations
-    scale_rel_tol : float
+    scale_conv_tol : float
         Relative tolerance for convergence check
     scaling_lb : float, optional
         Lower bound for scaling factors (default: 1e-8)
@@ -765,7 +760,7 @@ def quad_equilibration(
         # Emit iteration progress
         _print_scaling_log("", "", 0, iteration_logs, 0.0, "", mode="iteration")
 
-        if rel_change < scale_rel_tol:
+        if rel_change < scale_conv_tol:
             break
 
         # Check time limit

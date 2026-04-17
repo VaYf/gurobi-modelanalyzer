@@ -107,7 +107,7 @@ def scale_model(
     model: gp.Model,
     method: str,
     scale_passes: int = 5,
-    scale_rel_tol: float = 1e-4,
+    scale_conv_tol: float = 1e-4,
     scaling_lb: float = 1e-8,
     scaling_ub: float = 1e8,
     value_threshold: float = 1e-13,
@@ -136,8 +136,9 @@ def scale_model(
         - 'arithmetic_mean': Arithmetic mean scaling (LP, QCP; not QP)
     scale_passes : int, optional
         Maximum number of scaling iterations (default: 5)
-    scale_rel_tol : float, optional
-        Relative tolerance for convergence (default: 1e-4)
+    scale_conv_tol : float, optional
+        Convergence tolerance: scaling stops early when the maximum deviation
+        of the scaling factors from 1 falls below this threshold (default: 1e-4)
     scaling_lb : float, optional
         Lower bound for scaling factors to avoid extreme values (default: 1e-8)
     scaling_ub : float, optional
@@ -273,6 +274,7 @@ def scale_model(
         0.0,
         "",
         scaling_time_limit,
+        scale_conv_tol,
         mode="header",
     )
 
@@ -312,7 +314,7 @@ def scale_model(
                         cols_to_scale,
                         rows_to_scale,
                         scale_passes,
-                        scale_rel_tol,
+                        scale_conv_tol,
                         scaling_time_limit=scaling_time_limit,
                     )
                 )
@@ -323,7 +325,7 @@ def scale_model(
                         cols_to_scale,
                         rows_to_scale,
                         scale_passes,
-                        scale_rel_tol,
+                        scale_conv_tol,
                         scaling_time_limit=scaling_time_limit,
                     )
                 )
@@ -334,7 +336,7 @@ def scale_model(
                         cols_to_scale,
                         rows_to_scale,
                         scale_passes,
-                        scale_rel_tol,
+                        scale_conv_tol,
                         scaling_time_limit=scaling_time_limit,
                     )
                 )
@@ -364,7 +366,7 @@ def scale_model(
                 cols_to_scale,
                 rows_to_scale,
                 scale_passes,
-                scale_rel_tol,
+                scale_conv_tol,
                 scaling_lb=scaling_lb,
                 scaling_ub=scaling_ub,
                 scaling_time_limit=scaling_time_limit,
@@ -375,7 +377,6 @@ def scale_model(
                 row_scaling = row_scaling @ row_init_scaling
 
     # Print separator before model building phase
-    logger.info("-" * 80)
     logger.info("Building scaled model...")
 
     # Compute scaled data
@@ -490,11 +491,9 @@ def scale_model(
     model_scaled._scaling_time = total_time
 
     # Emit scaling footer with final stats
-    logger.info("-" * 80)
-    logger.info(f"\nScaling completed in {total_time:.2f} seconds")
-    logger.info("\nScaled Model Ranges:")
+    logger.info(f"Scaling completed in {total_time:.2f} seconds")
+    logger.info("Scaled Model Ranges:")
     logger.info(_extract_range_stats(final_stats))
-    logger.info("-" * 80 + "\n")
 
     # Remove logging handlers added for this call
     for _h in _log_handlers:

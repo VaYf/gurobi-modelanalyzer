@@ -6,7 +6,7 @@ API Reference
 
 .. _APIscale_modelLabel:
 
-.. py:function:: gurobi_modelanalyzer.scale_model(model, method, scale_passes=5, scale_rel_tol=1e-4, scaling_lb=1e-8, scaling_ub=1e8, value_threshold=1e-13, scaling_time_limit=inf, scaling_log="", scaling_log_to_console=1, init_scaling=0, env=None)
+.. py:function:: gurobi_modelanalyzer.scale_model(model, method, scale_passes=5, scale_conv_tol=1e-4, scaling_lb=1e-8, scaling_ub=1e8, value_threshold=1e-13, scaling_time_limit=inf, scaling_log="", scaling_log_to_console=1, init_scaling=0, env=None)
 
    Scale a Gurobi optimization model to improve numerical conditioning.
 
@@ -27,9 +27,9 @@ API Reference
                   mean of their absolute values. Supports (MI)LP and (MI)QCP models.
 
    :param scale_passes: Maximum number of scaling iterations. Default: 5.
-   :param scale_rel_tol: Relative convergence tolerance. Scaling stops early
-                         when the improvement between iterations falls below
-                         this threshold. Default: 1e-4.
+   :param scale_conv_tol: Convergence tolerance. Scaling stops early when the
+                         maximum deviation of the scaling factors from 1 falls
+                         below this threshold. Default: 1e-4.
    :param scaling_lb: Lower bound for scaling factors. Prevents extreme
                       downscaling. Default: 1e-8.
    :param scaling_ub: Upper bound for scaling factors. Prevents extreme

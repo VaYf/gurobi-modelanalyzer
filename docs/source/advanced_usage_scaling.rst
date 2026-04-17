@@ -62,8 +62,8 @@ automatically.
 Controlling Convergence
 ***********************
 
-The iterative scaling algorithm repeats until the relative improvement between
-passes falls below ``scale_rel_tol``, the number of passes reaches
+The iterative scaling algorithm repeats until the maximum deviation of the
+scaling factors from 1 falls below ``scale_conv_tol``, the number of passes reaches
 ``scale_passes``, or the elapsed time budget is exhausted. When
 ``scaling_time_limit`` is set, the algorithm completes the current pass before
 stopping — it does not interrupt a pass mid-way.
@@ -74,7 +74,7 @@ stopping — it does not interrupt a pass mid-way.
        m,
        method="equilibration",
        scale_passes=10,          # allow up to 10 iterations
-       scale_rel_tol=1e-6,       # tighter convergence threshold
+       scale_conv_tol=1e-6,       # tighter convergence threshold
        scaling_time_limit=30.0,  # stop after completing the current pass
    )
 
@@ -227,42 +227,38 @@ entirely:
        scaling_log_to_console=1,
    )
 
-The log reports the original model's coefficient ranges, per-pass relative
-change in the scaled matrix, elapsed time per pass, total scaling time, and
-the scaled model's coefficient ranges. A typical log looks like::
+The log reports the original model's coefficient ranges, the maximum deviation
+of the scaling factors from 1 per pass, elapsed time per pass, total scaling
+time, and the scaled model's coefficient ranges. A typical log looks like::
 
-   --------------------------------------------------------------------------------
-   Scaling Method: equilibration
-   Scale Passes:   10
-
+   Scaling Method: arithmetic_mean
+   Scale Passes:   5
+   Conv. Tol.:     1.000000e-04
    Original Model Statistics:
-   Statistics for model 'MISC07':
+   Statistics for model 'glass4':
      Problem type                : MIP
-     Linear constraint matrix    : 212 rows, 260 columns, 8619 nonzeros
-     Variable types              : 1 continuous, 259 integer (0 binary)
-     Matrix range                : [1e+00, 7e+02]
-     Objective range             : [1e+00, 1e+00]
-     Bounds range                : [1e+00, 1e+00]
-     RHS range                   : [1e+00, 3e+02]
-
-   --------------------------------------------------------------------------------
-   Scale Pass   Rel. Change     Time (s)
-   --------------------------------------------------------------------------------
-   1            5.690000e+02    0.01
-   2            0.000000e+00    0.01
-   --------------------------------------------------------------------------------
-
-   Scaling completed in 0.02 seconds
-
+     Linear constraint matrix    : 396 rows, 322 columns, 1815 nonzeros
+     Variable types              : 20 continuous, 302 integer (0 binary)
+     Matrix range                : [1e+00, 8e+06]
+     Objective range             : [1e+00, 1e+06]
+     Bounds range                : [1e+00, 8e+02]
+     RHS range                   : [1e+00, 8e+06]
+   Scale Pass   Max Factor Dev.   Time (s)
+   1            8.104301e+03      0.01
+   2            3.270924e+01      0.01
+   3            2.626976e+01      0.02
+   4            4.890177e+00      0.02
+   5            1.053361e+00      0.03
+   Building scaled model...
+   Scaling completed in 0.04 seconds
    Scaled Model Ranges:
-     Matrix range                : [1e-01, 1e+00]
-     Objective range             : [6e+02, 6e+02]
-     Bounds range                : [1e+00, 1e+00]
-     RHS range                   : [1e+00, 3e+00]
-   --------------------------------------------------------------------------------
+     Matrix range                : [2e-01, 4e+00]
+     Objective range             : [2e+04, 1e+10]
+     Bounds range                : [5e-03, 1e+00]
+     RHS range                   : [9e-03, 4e+00]
 
-The **Rel. Change** column shows how much the scaled matrix changed compared
-to the previous pass. When it reaches zero (or falls below ``scale_rel_tol``),
+The **Max Factor Dev.** column shows the maximum deviation of the scaling
+factors from 1 in that pass. When it falls below ``scale_conv_tol``,
 the algorithm has converged and no further passes are performed. The **Time (s)**
 column shows cumulative wall-clock time up to and including that pass. Comparing the
 original and scaled **Matrix range** shows how much the coefficient spread has
