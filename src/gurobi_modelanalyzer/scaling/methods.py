@@ -310,6 +310,7 @@ def _scale_single_qconstr(
     col_scaling: scipy.sparse.csr_matrix,
     skip_row_scale: bool = False,
     row_scale_override: float = None,
+    scaling_lb: float = 1e-8,
 ) -> Tuple[scipy.sparse.csr_matrix, np.ndarray, str, float, float, str]:
     """
     Compute scaling for a single quadratic constraint.
@@ -330,6 +331,9 @@ def _scale_single_qconstr(
         When set, use this value directly as the row scaling factor,
         overriding both skip_row_scale and the norm-based computation.
         Used to honour constr._init_scaling (default: None)
+    scaling_lb : float, optional
+        Lower bound for the row scaling factor to avoid extreme values
+        (default: 1e-8)
 
     Returns:
     --------
@@ -374,7 +378,7 @@ def _scale_single_qconstr(
     elif skip_row_scale:
         scaling_factor = 1.0
     else:
-        scaling_factor = 1.0 / max(qc_full_norm, q_norm, abs(rhs), 1.0)
+        scaling_factor = max(1.0 / max(qc_full_norm, q_norm, abs(rhs), 1.0), scaling_lb)
 
     qc_scaled = scaling_factor * qc
     q_scaled = scaling_factor * q

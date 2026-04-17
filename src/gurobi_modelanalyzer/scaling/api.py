@@ -460,6 +460,7 @@ def scale_model(
                 col_scaling,
                 skip_row_scale=(getattr(qconstr, "_scale", 1) == 0),
                 row_scale_override=_qconstr_row_scale_override(qconstr, init_scaling),
+                scaling_lb=scaling_lb,
             )
             for qconstr in qconstrs
         ]
