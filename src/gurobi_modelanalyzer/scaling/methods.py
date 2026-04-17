@@ -667,8 +667,6 @@ def quad_equilibration(
 
     for completed_scale_passes in range(scale_passes):
         iter_start_time = time.time()
-        previous_constr_matrix = scaled_constr_matrix.copy()
-        previous_q_matrix = scaled_q_matrix.copy()
 
         # Build KKT matrix from CURRENT scaled matrices and convert to CSC for
         # column operations
@@ -746,21 +744,9 @@ def quad_equilibration(
         diagonal_scaling_total = diagonal_scaling_iter @ diagonal_scaling_total
         obj_scaling_factor_total *= obj_scaling_factor
 
-        # Check convergence
-        norm_constr_diff = scipy.sparse.linalg.norm(
-            scaled_constr_matrix - previous_constr_matrix, ord="fro"
-        )
-        norm_constr_prev = scipy.sparse.linalg.norm(previous_constr_matrix, ord="fro")
-        norm_q_diff = scipy.sparse.linalg.norm(
-            scaled_q_matrix - previous_q_matrix, ord="fro"
-        )
-        norm_q_prev = scipy.sparse.linalg.norm(previous_q_matrix, ord="fro")
-
-        rel_change = 0.0
-        if norm_constr_prev > 0 and norm_q_prev > 0:
-            rel_constr_diff = norm_constr_diff / norm_constr_prev
-            rel_q_diff = norm_q_diff / norm_q_prev
-            rel_change = max(rel_constr_diff, rel_q_diff)
+        # Check convergence: max deviation of diagonal factors from 1
+        # (same criterion as the LP case, matching Algorithm 2 in the paper)
+        rel_change = np.max(np.abs(diagonal_factors - 1.0))
 
         iter_time = time.time() - iter_start_time
         total_elapsed_time += iter_time
@@ -775,12 +761,8 @@ def quad_equilibration(
         # Emit iteration progress
         _print_scaling_log("", "", 0, iteration_logs, 0.0, "", mode="iteration")
 
-        if norm_constr_prev > 0 and norm_q_prev > 0:
-            rel_constr_diff = norm_constr_diff / norm_constr_prev
-            rel_q_diff = norm_q_diff / norm_q_prev
-
-            if rel_constr_diff < scale_rel_tol and rel_q_diff < scale_rel_tol:
-                break
+        if rel_change < scale_rel_tol:
+            break
 
         # Check time limit
         if total_elapsed_time >= scaling_time_limit:
